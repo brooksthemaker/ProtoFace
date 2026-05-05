@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.Python
+*.egg-info/
+dist/
+.eggs/
+.venv/
+venv/
+env/
+
+# Generated face assets — recreate with: python generate_assets.py
+faces/**/*.png
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# macOS
+.DS_Store
+
+# Logs
+*.log

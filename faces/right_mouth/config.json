@@ -1,0 +1,10 @@
+{
+  "expressions": {
+    "neutral": "neutral.png",
+    "talking": "talking.png",
+    "smile":   "smile.png",
+    "frown":   "frown.png"
+  },
+  "blink": "neutral.png",
+  "mouth": {"x": 4, "y": 8, "w": 56, "h": 16}
+}

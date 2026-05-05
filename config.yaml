@@ -1,0 +1,122 @@
+panel:
+  # Physical panel dimensions (single panel)
+  panel_width: 64
+  panel_height: 32
+  brightness: 80
+  hardware_mapping: regular          # regular | adafruit-hat | adafruit-hat-pwm | classic
+  gpio_slowdown: 4                   # P2.5 panels typically need 3-4
+  chain_length: 2                    # panels chained horizontally per row
+  parallel: 2                        # rows of panels stacked vertically
+  # Logical canvas = panel_width*chain_length × panel_height*parallel = 128×64
+
+display:
+  fps: 30
+  preview: true          # true = pygame window (dev); false = HUB75 output (Pi)
+  preview_scale: 6       # scale factor for the preview window
+  background: [0, 0, 0]  # RGB background colour
+
+# ── 4-panel face layout ───────────────────────────────────────────────────────
+# Each entry renders independently to its region of the 128×64 canvas.
+# region: [x, y, width, height] in canvas pixels.
+
+panels:
+  - name: left_eye
+    region: [0, 0, 64, 32]
+    face:
+      active: left_eye
+      wiggle:   {speed: 0.8,  amplitude_x: 2.0, amplitude_y: 1.0}
+      blink:    {interval_min: 3.0, interval_max: 7.0, duration: 0.15}
+      expression_fade: 0.3
+      mouth_sensitivity: 0.5
+    material: {active: teal, scroll_x: 0.0, scroll_y: 0.0}
+    particles: {active: none}
+
+  - name: right_eye
+    region: [64, 0, 64, 32]
+    face:
+      active: right_eye
+      wiggle:   {speed: 0.85, amplitude_x: 2.0, amplitude_y: 1.0}  # offset phase
+      blink:    {interval_min: 3.5, interval_max: 7.5, duration: 0.15}
+      expression_fade: 0.3
+      mouth_sensitivity: 0.5
+    material: {active: teal, scroll_x: 0.0, scroll_y: 0.0}
+    particles: {active: none}
+
+  - name: left_mouth
+    region: [0, 32, 64, 32]
+    face:
+      active: left_mouth
+      wiggle:   {speed: 0.0, amplitude_x: 0.0, amplitude_y: 0.0}
+      blink:    {interval_min: 999, interval_max: 1000, duration: 0.0}
+      expression_fade: 0.1
+      mouth_sensitivity: 0.5
+    material: {active: teal, scroll_x: 12.0, scroll_y: 0.0}
+    particles:
+      preset: fire
+
+  - name: right_mouth
+    region: [64, 32, 64, 32]
+    face:
+      active: right_mouth
+      wiggle:   {speed: 0.0, amplitude_x: 0.0, amplitude_y: 0.0}
+      blink:    {interval_min: 999, interval_max: 1000, duration: 0.0}
+      expression_fade: 0.1
+      mouth_sensitivity: 0.5
+    material: {active: teal, scroll_x: -12.0, scroll_y: 0.0}   # mirror scroll
+    particles:
+      preset: fire
+
+# ── Particle layer examples ───────────────────────────────────────────────────
+# Uncomment to use in place of the preset: references above.
+#
+#    particles:
+#      layers:
+#        - effect: embers
+#          count: 30
+#          colors: [[255, 60, 0], [255, 100, 10]]
+#          speed_min: 8.0
+#          speed_max: 22.0
+#          size_min: 1
+#          size_max: 2
+#          blend: add
+#        - effect: sparkle
+#          count: 6
+#          colors: [[255, 255, 220]]
+#          life_min: 0.05
+#          life_max: 0.15
+#          blend: add
+
+inputs:
+  microphone:
+    enabled: true
+    type: usb            # usb | i2s
+    device_index: null   # explicit PyAudio device index (null = auto-detect)
+    # ── I2S MEMS mic options (type: i2s) ──────────────────────────────────────
+    # Requires dtoverlay=i2s-mems-mic (or similar) in /boot/config.txt.
+    # device_name: i2s   # substring matched against ALSA device name
+    # channel: 0         # 0=left (default), 1=right
+    sample_rate: 44100
+    chunk: 1024
+    smoothing: 0.15      # EMA smoothing factor (lower = more smoothing)
+
+  gyro:
+    enabled: false
+    i2c_address: 0x68    # MPU-6050 default
+    sensitivity: 0.4     # pixels of face offset per degree
+    max_offset: 8        # pixel clamp
+
+  boop:
+    enabled: false
+    gpio_pin: 17
+    expression: surprised
+    duration: 2.0        # seconds before reverting to previous expression
+    debounce: 0.05       # seconds
+
+gif:
+  folder: gifs
+  auto_cycle: false
+  cycle_interval: 30.0   # seconds between auto-cycling GIFs
+
+ipc:
+  socket: /run/protoface.sock        # Unix socket path for ProtoHUD → Protoface commands
+  shm_path: /dev/shm/protoface_frame # Shared memory path for Protoface → ProtoHUD preview

@@ -1,0 +1,9 @@
+numpy>=1.24
+Pillow>=10.0
+PyYAML>=6.0
+pygame>=2.5        # preview window (dev only)
+pyaudio>=0.2.13    # microphone input (optional)
+# On Raspberry Pi, also install:
+#   sudo pip install rgbmatrix   (rpi-rgb-led-matrix Python bindings)
+#   sudo apt install python3-smbus  (I2C for gyro)
+#   sudo pip install RPi.GPIO       (boop sensor)

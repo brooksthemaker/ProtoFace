@@ -1,0 +1,179 @@
+# Particle presets — reference by name in config.yaml:  particles: {preset: fire}
+#
+# Single-effect presets use {effect: <name>, ...} shorthand.
+# Multi-layer presets use {layers: [{effect: ...}, ...]} syntax.
+# All per-layer keys are optional and fall back to effect defaults.
+
+# ── Single-effect presets ─────────────────────────────────────────────────────
+
+gentle_snow:
+  effect: snow
+  count: 15
+  colors: [[200, 215, 255], [220, 235, 255]]
+  speed_min: 4.0
+  speed_max: 7.0
+  drift_x: 0.8
+  blend: add
+
+heavy_snow:
+  effect: snow
+  count: 60
+  colors: [[240, 245, 255], [255, 255, 255]]
+  speed_min: 10.0
+  speed_max: 18.0
+  drift_x: 3.0
+  blend: add
+
+campfire:
+  effect: embers
+  count: 40
+  colors: [[255, 80, 10], [255, 100, 20]]
+  speed_min: 14.0
+  speed_max: 22.0
+  spread: 0.6
+  blend: add
+
+galaxy:
+  effect: sparkle
+  count: 60
+  colors: [[255,80,80],[80,180,255],[255,220,80],[180,80,255],[80,255,160]]
+  life_min: 0.05
+  life_max: 0.5
+  blend: add
+
+party:
+  effect: confetti
+  count: 35
+  colors: [[255,50,50],[255,180,30],[50,220,50],[50,150,255],[220,50,220],[255,255,50]]
+  speed_min: 6.0
+  speed_max: 10.0
+  blend: normal
+
+radar:
+  effect: rings
+  count: 2
+  colors: [[0, 255, 80]]
+  speed_min: 12.0
+  speed_max: 18.0
+  max_radius: 25
+  blend: add
+
+# ── Multi-layer presets ───────────────────────────────────────────────────────
+
+# Layered fire: slow orange base, fast yellow sparks, rare white glints
+fire:
+  layers:
+    - effect: embers
+      count: 35
+      colors: [[255,50,0],[220,60,0],[200,40,0]]
+      speed_min: 8
+      speed_max: 20
+      size_min: 1
+      size_max: 2
+      blend: add
+    - effect: embers
+      count: 15
+      colors: [[255,160,0],[255,200,20],[255,180,10]]
+      speed_min: 18
+      speed_max: 40
+      size_min: 1
+      size_max: 1
+      blend: add
+    - effect: sparkle
+      count: 5
+      colors: [[255,255,200],[255,240,180]]
+      life_min: 0.05
+      life_max: 0.12
+      blend: add
+
+# Drifting green/blue fireflies with sparkle accents
+aurora:
+  layers:
+    - effect: fireflies
+      count: 20
+      colors: [[0,200,180],[0,160,255],[0,220,200]]
+      speed_min: 3
+      speed_max: 6
+      blend: add
+    - effect: sparkle
+      count: 10
+      colors: [[100,255,220],[80,220,255]]
+      life_min: 0.1
+      life_max: 0.4
+      blend: add
+
+# Heavy snow mixed with fast rain streaks
+blizzard:
+  layers:
+    - effect: snow
+      count: 40
+      colors: [[180,200,255],[200,215,255],[220,230,255]]
+      speed_min: 18
+      speed_max: 35
+      drift_x: 4.0
+      blend: add
+    - effect: rain
+      count: 10
+      colors: [[160,190,255],[180,200,255]]
+      speed_min: 50
+      speed_max: 70
+      drift_x: 6.0
+      blend: add
+
+# Cyan/teal rings with firefly core — radar or sonar feel
+sonar:
+  layers:
+    - effect: rings
+      count: 2
+      colors: [[0,220,180],[0,200,160]]
+      speed_min: 12
+      speed_max: 16
+      max_radius: 28
+      blend: add
+    - effect: fireflies
+      count: 4
+      colors: [[0,255,200]]
+      speed_min: 1
+      speed_max: 3
+      blend: add
+
+# Purple/pink confetti with sparkle flash — party mode
+celebration:
+  layers:
+    - effect: confetti
+      count: 30
+      colors: [[255,50,120],[255,160,0],[50,200,255],[200,50,255]]
+      speed_min: 5
+      speed_max: 12
+      blend: normal
+    - effect: sparkle
+      count: 15
+      colors: [[255,255,255],[255,220,255]]
+      life_min: 0.05
+      life_max: 0.25
+      blend: add
+
+# Cold cyan embers rising — ghost fire or electric
+plasma:
+  layers:
+    - effect: embers
+      count: 30
+      colors: [[0,180,255],[0,140,220],[20,160,255]]
+      speed_min: 8
+      speed_max: 20
+      blend: add
+    - effect: embers
+      count: 12
+      colors: [[180,220,255],[200,240,255]]
+      speed_min: 20
+      speed_max: 40
+      size_min: 1
+      size_max: 1
+      blend: add
+    - effect: rings
+      count: 1
+      colors: [[0,200,255]]
+      speed_min: 10
+      speed_max: 15
+      max_radius: 15
+      blend: add

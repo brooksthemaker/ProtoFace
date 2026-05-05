@@ -1,0 +1,11 @@
+{
+  "expressions": {
+    "neutral":   "neutral.png",
+    "happy":     "happy.png",
+    "angry":     "angry.png",
+    "surprised": "surprised.png"
+  },
+  "blink": "blink.png",
+  "eye_left":  {"x": 8,  "y": 8, "w": 20, "h": 14},
+  "eye_right": {"x": 36, "y": 8, "w": 20, "h": 14}
+}
