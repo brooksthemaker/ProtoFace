@@ -35,8 +35,11 @@ import socket
 import threading
 from typing import TYPE_CHECKING
 
+from .persistence import save_state
+
 if TYPE_CHECKING:
     from .state import FaceState
+    from .persistence import LiveSettings
 
 _EFFECT_MAP: dict[int, str | dict] = {
     0:  'none',
@@ -80,13 +83,16 @@ class IpcServer:
     Dispatches received commands to all panel states and particle systems.
     """
 
-    def __init__(self, state: 'FaceState', cfg: dict):
-        ipc_cfg       = cfg.get('ipc', {})
-        self._path    = ipc_cfg.get('socket', '/run/protoface.sock')
-        self._state   = state
-        self._panels  = []    # set via set_panels()
-        self._thread  = None
-        self._running = False
+    def __init__(self, state: 'FaceState', cfg: dict,
+                 live: 'LiveSettings | None' = None, state_path: str | None = None):
+        ipc_cfg          = cfg.get('ipc', {})
+        self._path       = ipc_cfg.get('socket', '/run/protoface.sock')
+        self._state      = state
+        self._panels     = []    # set via set_panels()
+        self._live       = live          # serializable mirror of the current look
+        self._state_path = state_path    # where save_config writes state.yaml
+        self._thread     = None
+        self._running    = False
 
     def set_panels(self, panels: list):
         """Provide the list of panel context dicts from run.py."""
@@ -164,9 +170,9 @@ class IpcServer:
                     line, buf = buf.split(b'\n', 1)
                     line = line.strip()
                     if line:
-                        self._dispatch(line)
+                        self._dispatch(line, conn)
 
-    def _dispatch(self, raw: bytes):
+    def _dispatch(self, raw: bytes, conn: 'socket.socket | None' = None):
         try:
             msg = json.loads(raw)
         except json.JSONDecodeError:
@@ -181,6 +187,7 @@ class IpcServer:
             b = int(msg.get('b', 0))
             for p in self._panels:
                 p['state'].set_custom_color(r, g, b)
+            self._track(material=f'solid:{r},{g},{b}')
 
         elif cmd == 'set_effect':
             # Accept either a numeric effect_id or a raw 'layers' list/dict.
@@ -194,6 +201,7 @@ class IpcServer:
 
             for p in self._panels:
                 p['particles'].set_effect(effect_cfg)
+            self._track(particles=effect_cfg)
 
         elif cmd == 'play_gif':
             gif_id = int(msg.get('gif_id', 0))
@@ -204,6 +212,7 @@ class IpcServer:
             value = max(0, min(255, int(msg.get('value', 255))))
             for p in self._panels:
                 p['state'].brightness = value
+            self._track(brightness=value)
 
         elif cmd == 'set_palette':
             pass  # no palette concept in Protoface
@@ -215,9 +224,18 @@ class IpcServer:
                 mat_name = _MATERIAL_COLOR_MAP.get(value, 'teal')
                 for p in self._panels:
                     p['state'].request_material(mat_name)
+                self._track(material=mat_name)
+
+        elif cmd == 'save_config':
+            ok = False
+            if self._live is not None and self._state_path:
+                ok = save_state(self._state_path, self._live.snapshot())
+            self._reply(conn, {'cmd': 'save_config', 'ok': ok})
 
         elif cmd == 'request_status':
-            pass
+            snap = self._live.snapshot() if self._live is not None else {}
+            snap['cmd'] = 'status'
+            self._reply(conn, snap)
 
         elif cmd == 'release_control':
             for p in self._panels:
@@ -225,3 +243,18 @@ class IpcServer:
 
         else:
             print(f'[ipc] unknown cmd: {cmd!r}')
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
+
+    def _track(self, **kw):
+        """Mirror a look change into LiveSettings so save_config can persist it."""
+        if self._live is not None:
+            self._live.update(**kw)
+
+    def _reply(self, conn, obj: dict):
+        if conn is None:
+            return
+        try:
+            conn.sendall((json.dumps(obj) + '\n').encode())
+        except OSError:
+            pass

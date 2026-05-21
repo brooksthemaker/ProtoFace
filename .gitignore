@@ -24,3 +24,7 @@ faces/**/*.png
 
 # Logs
 *.log
+
+# Runtime state saved by ProtoHUD (save_config) — machine-managed, not committed
+state.yaml
+*.tmp

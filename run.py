@@ -32,6 +32,7 @@ from protoface.inputs.microphone import Microphone
 from protoface.inputs.gyro       import Gyro
 from protoface.inputs.boop       import BoopSensor
 from protoface.keyboard          import KeyReader
+from protoface.persistence       import LiveSettings, load_state, save_state
 
 
 # Solo-mode (terminal) control palettes — cycled with the keyboard when running
@@ -140,6 +141,11 @@ def main():
 
     cfg = load_config(args.config)
 
+    # Runtime state overlay saved by ProtoHUD (save_config); applied over config.
+    state_path = os.path.join(
+        os.path.dirname(os.path.abspath(args.config)) or '.', 'state.yaml')
+    saved = load_state(state_path)
+
     panel_cfg  = cfg.get('panel', {})
     panel_w    = panel_cfg.get('panel_width',  panel_cfg.get('width',  64))
     panel_h    = panel_cfg.get('panel_height', panel_cfg.get('height', 32))
@@ -154,20 +160,6 @@ def main():
 
     # ── Build panels ──────────────────────────────────────────────────────────
     panels   = _build_panels(cfg)
-
-    # ── Baked-in effects: layer every enabled effect from the 'effects:' section
-    #    onto the face panels (combine freely; toggle each with its `enabled`).
-    effect_layers = []
-    for _name, ecfg in (cfg.get('effects') or {}).items():
-        if isinstance(ecfg, dict) and ecfg.get('enabled'):
-            if ecfg.get('layers'):
-                effect_layers.extend(ecfg['layers'])
-            elif ecfg.get('effect'):
-                effect_layers.append({k: v for k, v in ecfg.items() if k != 'enabled'})
-    if effect_layers:
-        for p in panels:
-            p['particles'].set_effect({'layers': effect_layers})
-
     renderer = Renderer(canvas_w, canvas_h)
 
     gif_folder   = gif_cfg.get('folder', 'gifs')
@@ -183,11 +175,52 @@ def main():
 
     out  = build_output(cfg)
 
+    primary_state = panels[0]['state']   # panel[0] is the primary IPC/state handle
+
+    # ── Look overlay (precedence, last wins): per-panel config -> enabled
+    #    'effects:' section -> runtime state.yaml saved by ProtoHUD. ────────────
+    def _first(key, default):
+        pl = cfg.get('panels') or []
+        return pl[0].get(key, default) if pl else default
+
+    # particles
+    effect_layers = []
+    for _name, ecfg in (cfg.get('effects') or {}).items():
+        if isinstance(ecfg, dict) and ecfg.get('enabled'):
+            if ecfg.get('layers'):
+                effect_layers.extend(ecfg['layers'])
+            elif ecfg.get('effect'):
+                effect_layers.append({k: v for k, v in ecfg.items() if k != 'enabled'})
+    final_particles = _first('particles', {'active': 'none'})
+    particles_override = False
+    if effect_layers:
+        final_particles = {'layers': effect_layers}; particles_override = True
+    if 'particles' in saved:
+        final_particles = saved['particles']; particles_override = True
+    if particles_override:
+        for p in panels:
+            p['particles'].set_effect(final_particles)
+
+    # material
+    final_material = (_first('material', {}) or {}).get('active', 'teal')
+    if 'material' in saved:
+        final_material = saved['material']
+        for p in panels:
+            _, _, pw, ph = p['region']
+            p['material'][0] = load_material(final_material, pw, ph)
+
+    # brightness
+    final_brightness = int(saved.get('brightness', 255))
+    primary_state.brightness = final_brightness
+
+    live = LiveSettings(brightness=final_brightness,
+                        material=final_material,
+                        particles=final_particles)
+
     # ── IPC server — share state and particle refs for all panels ─────────────
     # IPC commands apply to all panels unless targeting a named panel.
     # Use panel[0] state as the primary IPC state handle.
-    primary_state = panels[0]['state']
-    ipc = IpcServer(primary_state, cfg)
+    ipc = IpcServer(primary_state, cfg, live=live, state_path=state_path)
     # Give IPC access to all panels' particles and materials
     ipc.set_panels(panels)
     ipc.start()
@@ -205,8 +238,8 @@ def main():
     face_color_i = 0
     effect_i     = 0
     if sys.stdin.isatty():
-        print("Solo controls: c/v face colour  x/z effect  e/w expression  "
-              "b blink  +/- brightness  q quit")
+        print("Solo controls: c/v colour  x/z effect  e/w expr  b blink  "
+              "+/- bright  s save  q quit")
 
     # ── Main loop ─────────────────────────────────────────────────────────────
     target_dt = 1.0 / fps
@@ -251,11 +284,13 @@ def main():
                     for p in panels:
                         _, _, pw, ph = p['region']
                         p['material'][0] = SolidMaterial(cr, cg, cb, pw, ph)
+                    live.update(material=f'solid:{cr},{cg},{cb}')
                     print(f"[face] colour: {cname}")
                 elif key in ('x', 'z'):
                     effect_i = (effect_i + (1 if key == 'x' else -1)) % len(EFFECTS)
                     for p in panels:
                         p['particles'].set_effect(EFFECTS[effect_i])
+                    live.update(particles=EFFECTS[effect_i])
                     print(f"[fx] effect: {EFFECTS[effect_i]}")
                 elif key in ('e', 'w'):
                     for p in panels:
@@ -267,11 +302,16 @@ def main():
                 elif key == 'b':
                     for p in panels:
                         p['state'].trigger_blink()
+                elif key == 's':
+                    if save_state(state_path, live.snapshot()):
+                        print(f"[save] wrote {state_path}")
                 elif key in ('+', '='):
                     primary_state.brightness = min(255, primary_state.brightness + 16)
+                    live.update(brightness=primary_state.brightness)
                     print(f"[brightness] {primary_state.brightness}")
                 elif key in ('-', '_'):
                     primary_state.brightness = max(16, primary_state.brightness - 16)
+                    live.update(brightness=primary_state.brightness)
                     print(f"[brightness] {primary_state.brightness}")
 
             # ── Shared inputs ─────────────────────────────────────────────────
