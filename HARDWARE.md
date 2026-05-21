@@ -270,7 +270,7 @@ panel.
 | Only one panel lights | Chain ribbon OUT→IN reversed/loose | Check the panel A OUT → panel B IN ribbon |
 | Half a panel blank | R2/G2/B2 issue on that panel | Reseat the ribbon; check the panel |
 | Random flicker | Long/noisy ribbon, weak PSU | Shorten ribbons (<20 cm); add PSU headroom |
-| Image squished vertically | 64×32 assets scaled to 64×16 | Expected in the 2-panel eye+mouth layout |
+| Right panel not mirrored / out of sync | `mirror_of` not set | set `mirror_of: face_left` on the right panel in config.yaml |
 | Panel works in preview, not on hardware | `display.preview: true` | Set `display.preview: false` |
 | Panels overheat (P2.5) | Brightness too high | Lower brightness; ensure airflow |
 

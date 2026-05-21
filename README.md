@@ -8,19 +8,18 @@ A Python LED face display daemon for the Raspberry Pi Compute Module 5. Drives H
 
 ## Panel Layout
 
-The current build drives **2× 64×32 panels daisy-chained on port 1** of the bonnet (a 128×32 logical canvas). Each panel is a mini-face: an eye on top, a mouth below.
+The current build drives **2× 64×32 panels daisy-chained on port 1** of the bonnet (a 128×32 logical canvas). Both panels show the **same full face** from `faces/main`; the right panel is a horizontal **mirror** of the left, so the face is symmetric and the two halves stay perfectly in sync.
 
 ```
 ┌───────────────────────┬───────────────────────┐
-│       left_eye        │       right_eye       │  rows 0–15
-├───────────────────────┼───────────────────────┤
-│      left_mouth       │      right_mouth      │  rows 16–31
+│      face (main)      │  face (main, mirror)  │
+│        64×32          │        64×32          │
 └───────────────────────┴───────────────────────┘
    panel 1 (cols 0–63)     panel 2 (cols 64–127)
                   128×32 canvas
 ```
 
-Each region has its own face sprite, material colour, and particle layer stack — eyes blink on independent timers, mouths drive audio-reactive expressions and fire particles.
+The face sprite is tinted by the panel's material colour and can carry a particle layer. The mirror is driven by `mirror_of` in `config.yaml` — the right panel renders the left panel flipped horizontally.
 
 > The bonnet has **3 HUB75 ports** (active3 pinout), so the layout can be expanded — more panels daisy-chained per port (`chain_length`) and/or more ports (`parallel`, up to 3). The geometry below is for the validated 2-panel single-port setup.
 
@@ -83,6 +82,22 @@ Preview window keyboard shortcuts:
 
 ---
 
+## Demo
+
+`demo.py` is a standalone hardware test — it shows **"Demo"** on each panel and lets you cycle colours and particle effects from the keyboard (works over SSH). It drives the panels through the same Piomatter output as the app, so it's a quick way to confirm wiring, colour order, and effects.
+
+```bash
+python demo.py
+```
+
+| Key | Action |
+|-----|--------|
+| `c` / `v` | Next / previous colour |
+| `x` / `z` | Next / previous effect |
+| `q` / `Esc` | Quit |
+
+---
+
 ## Hardware
 
 ### Bonnet + Panels
@@ -142,35 +157,26 @@ display:
   fps:     30
   preview: false           # false = HUB75 output (Pi); true = pygame window (dev)
 
-panels:                    # each panel = eye (top 16 rows) + mouth (bottom 16 rows)
-  - name: left_eye
-    region: [0, 0, 64, 16]
-    face:     {active: left_eye, wiggle: {speed: 0.8, amplitude_x: 2.0, amplitude_y: 1.0}}
+panels:                    # both panels show faces/main; right mirrors left
+  - name: face_left
+    region: [0, 0, 64, 32]
+    face:     {active: main, wiggle: {speed: 0.8, amplitude_x: 2.0, amplitude_y: 1.0}}
     material: {active: teal}
     particles: {active: none}
 
-  - name: right_eye
-    region: [64, 0, 64, 16]
-    face:     {active: right_eye, wiggle: {speed: 0.85, amplitude_x: 2.0, amplitude_y: 1.0}}
+  - name: face_right
+    region: [64, 0, 64, 32]
+    mirror_of: face_left     # render = face_left flipped horizontally
+    face:     {active: main}
     material: {active: teal}
     particles: {active: none}
-
-  - name: left_mouth
-    region: [0, 16, 64, 16]
-    material: {active: teal, scroll_x: 12.0}
-    particles: {preset: fire}
-
-  - name: right_mouth
-    region: [64, 16, 64, 16]
-    material: {active: teal, scroll_x: -12.0}
-    particles: {preset: fire}
 
 ipc:
   socket:   /run/protoface.sock
   shm_path: /dev/shm/protoface_frame
 ```
 
-> The face assets are 64×32 source PNGs scaled to each 64×16 region, so they read a little short vertically. The blink/mouth-open hit-boxes in each `faces/*/config.json` are defined in 64×32 space, so those blends land slightly off at 64×16 — fine for now, rescale the region coords if you want pixel-accurate blink/talk.
+> Faces are 64×32 and render at native size on each panel, so the blink/mouth-open hit-boxes in `faces/main/config.json` (defined in 64×32 space) line up correctly. `mirror_of` makes the right panel an exact flipped copy of the left, so blink and talk stay perfectly synchronised across both halves.
 
 ---
 
@@ -231,15 +237,16 @@ particles:
 
 ## Face Assets
 
-Each face lives in its own folder under `faces/`. The folder name matches the `face.active` key in `config.yaml`.
+Each face lives in its own folder under `faces/`; the folder name matches the `face.active` key in `config.yaml`. The current layout uses one whole-face folder, **`faces/main`**, shown on both panels (right mirrored).
 
 ```
 faces/
-  left_eye/
-    neutral.png        source PNG (scaled to the region size)
-    happy.png
-    blink.png
-    config.json
+  main/
+    neutral.png        white shape on transparent (tinted by the material)
+    happy.png  angry.png  sad.png  surprised.png
+    blink.png          eye-closed frame
+    mouth_open.png     mouth-open frame (blended by mic volume)
+    config.json        expressions map + eye/mouth hit-boxes
 ```
 
 `config.json` defines blendable regions (optional — without it the whole sprite swaps):
@@ -329,6 +336,7 @@ See [INTEGRATION.md](INTEGRATION.md) for GPIO usage, CPU budget, and the minimal
 
 ```
 run.py                      — entry point; argument parsing; main loop
+demo.py                     — standalone panel demo: "Demo" text + cycle colours/effects
 config.yaml                 — panel layout, inputs, IPC paths
 generate_assets.py          — creates placeholder PNGs for all face folders
 requirements.txt
@@ -351,11 +359,9 @@ protoface/
     boop.py                 — GPIO debounced sensor → expression trigger
 
 faces/
-  left_eye/                 — face sprites + config.json
-  right_eye/
-  left_mouth/
-  right_mouth/
+  main/                     — whole-face sprites shown on both panels (right mirrored)
   example_fox/              — single-panel reference design
+  left_eye/ right_eye/ left_mouth/ right_mouth/   — legacy split-feature folders
 
 materials/                  — PNG material files (tiled over face)
 particles/

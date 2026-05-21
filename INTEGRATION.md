@@ -30,13 +30,14 @@ ProtoHUD and Protoface communicate through two one-way channels:
 
 ### Protoface (Python)
 
-Per-frame work on the 128×32 canvas at 30 fps (4 regions: 2 eyes + 2 mouths):
+Per-frame work on the 128×32 canvas at 30 fps (2 panels; the right is a mirror of the left):
 
 | Operation | Approx cost |
 |-----------|-------------|
-| 4× face sprite compositing (numpy) | ~0.5 ms |
-| 4× material multiply | ~0.3 ms |
-| 4× particle system update + render | ~1–3 ms (depends on layer count) |
+| face sprite compositing (numpy) | ~0.3 ms |
+| material multiply | ~0.2 ms |
+| particle system update + render | ~1–3 ms (depends on layer count) |
+| mirror pass (np.fliplr copy) | < 0.1 ms |
 | HUB75 transfer (Piomatter / RP1 PIO) | PIO-driven |
 | Shm write (12288 bytes memcpy) | < 0.1 ms |
 | **Total budget at 30 fps** | 33 ms |
