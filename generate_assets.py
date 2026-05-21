@@ -5,6 +5,7 @@ Protoface — run once to generate the example face PNGs and sample material tex
     python generate_assets.py
 
 Generates assets for:
+  - faces/main/          (whole face used by the 2-panel mirrored layout)
   - faces/example_fox/   (original single-panel 64×32 fox face)
   - faces/left_eye/      (64×32 eye panel — left side)
   - faces/right_eye/     (64×32 eye panel — right side, mirrored)
@@ -133,16 +134,16 @@ def save(img: Image.Image, path: str):
 
 print("Generating face assets …\n")
 
-# example_fox (original)
-fox = 'faces/example_fox'
-os.makedirs(fox, exist_ok=True)
-save(draw_fox(),                         f'{fox}/neutral.png')
-save(draw_fox(blink=True),              f'{fox}/blink.png')
-save(draw_fox(mouth_open=True),          f'{fox}/mouth_open.png')
-save(draw_fox(angry=True),               f'{fox}/angry.png')
-save(draw_fox(sad=True),                 f'{fox}/sad.png')
-save(draw_fox(surprised=True),           f'{fox}/surprised.png')
-save(draw_fox(surprised=True, mouth_open=True), f'{fox}/happy.png')
+# main (single whole-face folder used by the 2-panel mirrored layout) + example_fox
+for face_dir in ('faces/main', 'faces/example_fox'):
+    os.makedirs(face_dir, exist_ok=True)
+    save(draw_fox(),                                f'{face_dir}/neutral.png')
+    save(draw_fox(blink=True),                      f'{face_dir}/blink.png')
+    save(draw_fox(mouth_open=True),                 f'{face_dir}/mouth_open.png')
+    save(draw_fox(angry=True),                      f'{face_dir}/angry.png')
+    save(draw_fox(sad=True),                        f'{face_dir}/sad.png')
+    save(draw_fox(surprised=True),                  f'{face_dir}/surprised.png')
+    save(draw_fox(surprised=True, mouth_open=True), f'{face_dir}/happy.png')
 
 # Eye panels
 for folder, mirror in [('faces/left_eye', False), ('faces/right_eye', True)]:

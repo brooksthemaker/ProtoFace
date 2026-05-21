@@ -16,56 +16,29 @@ display:
   background: [0, 0, 0]  # RGB background colour
 
 # ── 2-panel face layout (128×32) ──────────────────────────────────────────────
-# Two 64×32 panels chained on port 1. Each panel = an eye (top 16 rows) over a
-# mouth (bottom 16 rows). Each entry renders to its region of the 128×32 canvas.
+# Two 64×32 panels chained on port 1, both showing the same full face from
+# faces/main. The right panel mirrors the left (mirror_of) so the face is
+# symmetric and the two halves stay perfectly in sync.
 # region: [x, y, width, height] in canvas pixels.
 
 panels:
-  - name: left_eye
-    region: [0, 0, 64, 16]
+  - name: face_left
+    region: [0, 0, 64, 32]
     face:
-      active: left_eye
-      wiggle:   {speed: 0.8,  amplitude_x: 2.0, amplitude_y: 1.0}
+      active: main
+      wiggle:   {speed: 0.8, amplitude_x: 2.0, amplitude_y: 1.0}
       blink:    {interval_min: 3.0, interval_max: 7.0, duration: 0.15}
       expression_fade: 0.3
       mouth_sensitivity: 0.5
     material: {active: teal, scroll_x: 0.0, scroll_y: 0.0}
     particles: {active: none}
 
-  - name: right_eye
-    region: [64, 0, 64, 16]
-    face:
-      active: right_eye
-      wiggle:   {speed: 0.85, amplitude_x: 2.0, amplitude_y: 1.0}  # offset phase
-      blink:    {interval_min: 3.5, interval_max: 7.5, duration: 0.15}
-      expression_fade: 0.3
-      mouth_sensitivity: 0.5
-    material: {active: teal, scroll_x: 0.0, scroll_y: 0.0}
+  - name: face_right
+    region: [64, 0, 64, 32]
+    mirror_of: face_left      # render = face_left flipped horizontally
+    face: {active: main}      # built but overwritten by the mirror pass
+    material: {active: teal}
     particles: {active: none}
-
-  - name: left_mouth
-    region: [0, 16, 64, 16]
-    face:
-      active: left_mouth
-      wiggle:   {speed: 0.0, amplitude_x: 0.0, amplitude_y: 0.0}
-      blink:    {interval_min: 999, interval_max: 1000, duration: 0.0}
-      expression_fade: 0.1
-      mouth_sensitivity: 0.5
-    material: {active: teal, scroll_x: 12.0, scroll_y: 0.0}
-    particles:
-      preset: fire
-
-  - name: right_mouth
-    region: [64, 16, 64, 16]
-    face:
-      active: right_mouth
-      wiggle:   {speed: 0.0, amplitude_x: 0.0, amplitude_y: 0.0}
-      blink:    {interval_min: 999, interval_max: 1000, duration: 0.0}
-      expression_fade: 0.1
-      mouth_sensitivity: 0.5
-    material: {active: teal, scroll_x: -12.0, scroll_y: 0.0}   # mirror scroll
-    particles:
-      preset: fire
 
 # ── Particle layer examples ───────────────────────────────────────────────────
 # Uncomment to use in place of the preset: references above.

@@ -104,6 +104,7 @@ def _panel_from_cfg(pcfg: dict) -> dict:
     return {
         'name':     pcfg.get('name', 'panel'),
         'region':   (x, y, w, h),
+        'mirror_of': pcfg.get('mirror_of'),   # if set, this panel = source flipped
         'face':     face,
         'material': [mat],     # wrapped in list so IPC can swap
         'particles': particles,
@@ -282,6 +283,17 @@ def main():
                     frame = (frame * (brightness / 255.0)).astype(np.uint8)
 
                 canvas[y:y+h, x:x+w] = frame[:, :, :3]
+
+            # ── Mirror pass: panels with mirror_of copy a source region, flipped
+            region_by_name = {p['name']: p['region'] for p in panels}
+            for p in panels:
+                src_name = p.get('mirror_of')
+                if not src_name:
+                    continue
+                sx, sy, sw, sh = region_by_name.get(src_name, p['region'])
+                x, y, w, h = p['region']
+                if (sw, sh) == (w, h):
+                    canvas[y:y+h, x:x+w] = np.fliplr(canvas[sy:sy+sh, sx:sx+sw])
 
             # ── Write to shared memory + output ───────────────────────────────
             shm.write(canvas)
