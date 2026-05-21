@@ -193,6 +193,19 @@ ipc:
 
 ## Particle Effects
 
+### Baked-in toggles
+
+`config.yaml` has an `effects:` section with ready-made effects (`fire`, `sparkle`, `snow`) you can flip on/off without editing layers. Each enabled effect is layered onto the face (combine freely):
+
+```yaml
+effects:
+  fire:    {enabled: true,  layers: [{effect: embers, colors: [[255,0,0],[255,120,10]], count: 30, blend: add}]}
+  sparkle: {enabled: false, layers: [{effect: sparkle, colors: [[255,255,220]], count: 8, blend: add}]}
+  snow:    {enabled: false, layers: [{effect: snow, colors: [[200,220,255]], count: 30, blend: add}]}
+```
+
+Enabled effects override the per-panel `particles:` on the face. (At runtime, the `x`/`z` solo keys still cycle single effects on top.)
+
 ### Single effect (shorthand)
 
 ```yaml

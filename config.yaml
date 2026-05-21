@@ -50,6 +50,23 @@ panels:
 #          life_max: 0.15     #{>=life_min}
 #          blend: add         #{add|normal}
 
+# ── Baked-in effects ──────────────────────────────────────────────────────────
+# Each enabled effect is layered onto the face (combine freely). Toggle with
+# enabled. Layer params use the same ranges as the particle reference above.
+effects:
+  fire:
+    enabled: false       #{true|false}
+    layers:
+      - {effect: embers, colors: [[255,0,0],[255,120,10]], count: 30, speed_min: 8, speed_max: 22, blend: add}
+  sparkle:
+    enabled: false       #{true|false}
+    layers:
+      - {effect: sparkle, colors: [[255,255,220]], count: 8, life_min: 0.05, life_max: 0.2, blend: add}
+  snow:
+    enabled: false       #{true|false}
+    layers:
+      - {effect: snow, colors: [[200,220,255]], count: 30, speed_min: 6, speed_max: 12, blend: add}
+
 inputs:
   microphone:
     enabled: true        #{true|false}

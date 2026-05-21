@@ -154,6 +154,20 @@ def main():
 
     # ── Build panels ──────────────────────────────────────────────────────────
     panels   = _build_panels(cfg)
+
+    # ── Baked-in effects: layer every enabled effect from the 'effects:' section
+    #    onto the face panels (combine freely; toggle each with its `enabled`).
+    effect_layers = []
+    for _name, ecfg in (cfg.get('effects') or {}).items():
+        if isinstance(ecfg, dict) and ecfg.get('enabled'):
+            if ecfg.get('layers'):
+                effect_layers.extend(ecfg['layers'])
+            elif ecfg.get('effect'):
+                effect_layers.append({k: v for k, v in ecfg.items() if k != 'enabled'})
+    if effect_layers:
+        for p in panels:
+            p['particles'].set_effect({'layers': effect_layers})
+
     renderer = Renderer(canvas_w, canvas_h)
 
     gif_folder   = gif_cfg.get('folder', 'gifs')
