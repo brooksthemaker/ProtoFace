@@ -183,7 +183,7 @@ panels:                    # both panels show faces/main; right mirrors left
     particles: {active: none}
 
 ipc:
-  socket:   /run/protoface.sock
+  socket:   /tmp/protoface.sock
   shm_path: /dev/shm/protoface_frame
 ```
 
@@ -315,7 +315,7 @@ When running alongside [ProtoHUD](https://github.com/brooksthemaker/ProtoHUD) on
 
 | Channel | Direction | Path | Purpose |
 |---------|-----------|------|---------|
-| Unix socket | ProtoHUD → Protoface | `/run/protoface.sock` | Commands (set_effect, set_color, etc.) |
+| Unix socket | ProtoHUD → Protoface | `/tmp/protoface.sock` | Commands (set_effect, set_color, etc.) |
 | Shared memory | Protoface → ProtoHUD | `/dev/shm/protoface_frame` | Live 128×32 panel preview in HMD |
 
 Enable the panel preview in the ProtoHUD menu: **Menu → Face → Panel Preview**.

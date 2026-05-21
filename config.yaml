@@ -96,5 +96,5 @@ gif:
   cycle_interval: 30.0   #{>0}
 
 ipc:
-  socket: /run/protoface.sock        #{path}
+  socket: /tmp/protoface.sock        #{path}  (/run is root-only; /tmp is user-writable)
   shm_path: /dev/shm/protoface_frame #{path}

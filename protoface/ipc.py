@@ -1,7 +1,7 @@
 """
 Unix socket IPC server for Protoface.
 
-Listens on /run/protoface.sock (or a path from config) for newline-delimited
+Listens on /tmp/protoface.sock (or a path from config) for newline-delimited
 JSON commands sent by ProtoHUD's ProtofaceController.
 
 Supported commands (JSON objects, one per line):
@@ -86,7 +86,7 @@ class IpcServer:
     def __init__(self, state: 'FaceState', cfg: dict,
                  live: 'LiveSettings | None' = None, state_path: str | None = None):
         ipc_cfg          = cfg.get('ipc', {})
-        self._path       = ipc_cfg.get('socket', '/run/protoface.sock')
+        self._path       = ipc_cfg.get('socket', '/tmp/protoface.sock')
         self._state      = state
         self._panels     = []    # set via set_panels()
         self._live       = live          # serializable mirror of the current look

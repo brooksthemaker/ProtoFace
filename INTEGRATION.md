@@ -13,7 +13,7 @@ CM5
 │   └── ShmFrameReader            — reads /dev/shm/protoface_frame → panel preview
 │
 └── Protoface  (Python / numpy)   — drives HUB75 LED panels via Piomatter (RP1 PIO)
-    └── IpcServer                 — Unix socket server on /run/protoface.sock
+    └── IpcServer                 — Unix socket server on /tmp/protoface.sock
     └── ShmWriter                 — writes /dev/shm/protoface_frame
 ```
 
@@ -21,7 +21,7 @@ ProtoHUD and Protoface communicate through two one-way channels:
 
 | Channel | Direction | Path | Purpose |
 |---------|-----------|------|---------|
-| Unix socket | ProtoHUD → Protoface | `/run/protoface.sock` | Commands (set_effect, set_color, etc.) |
+| Unix socket | ProtoHUD → Protoface | `/tmp/protoface.sock` | Commands (set_effect, set_color, etc.) |
 | Shared memory | Protoface → ProtoHUD | `/dev/shm/protoface_frame` | Live panel preview in HMD |
 
 ---
@@ -223,7 +223,7 @@ sudo systemctl start protohud
 |-------------|---------------|-----|
 | HUB75 (Piomatter) | Protoface needs `/dev/pio0` | user in `gpio` group (no root) |
 | OpenGL ES display | ProtoHUD needs root or `video` group | `User=root` or `supplementary_groups=video` |
-| `/run/protoface.sock` | Created by Protoface (mode 0660) | Run Protoface first so socket exists |
+| `/tmp/protoface.sock` | Created by Protoface (mode 0660); /run is root-only so use /tmp | Run Protoface as the same user as ProtoHUD |
 | `/dev/shm/protoface_frame` | Created by Protoface | Protoface must start first |
 | GPIO access | Protoface (boop, gyro) | `/dev/gpiomem` — root or `gpio` group |
 | I2C access | Protoface (gyro) | `/dev/i2c-1` — root or `i2c` group |
