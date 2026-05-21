@@ -3,7 +3,8 @@ Pillow>=10.0
 PyYAML>=6.0
 pygame>=2.5        # preview window (dev only)
 pyaudio>=0.2.13    # microphone input (optional)
-# On Raspberry Pi, also install:
-#   sudo pip install rgbmatrix   (rpi-rgb-led-matrix Python bindings)
-#   sudo apt install python3-smbus  (I2C for gyro)
-#   sudo pip install RPi.GPIO       (boop sensor)
+# On CM5 / Raspberry Pi 5, also install:
+#   pip install Adafruit-Blinka-Raspberry-Pi5-Piomatter  (HUB75 via RP1 PIO; needs /dev/pio0)
+#   sudo apt install python3-smbus                        (I2C for gyro)
+#   pip install RPi.GPIO                                  (boop sensor)
+# NOTE: hzeller's rgbmatrix does NOT work on CM5/Pi 5 — use Piomatter (above).

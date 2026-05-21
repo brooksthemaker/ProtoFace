@@ -1,74 +1,84 @@
 """
-HUB75 output via rpi-rgb-led-matrix.
+HUB75 output via Adafruit Piomatter (Raspberry Pi 5 / CM5, RP1 PIO).
 
-Falls back silently if the library is not installed (development on non-Pi).
-On Raspberry Pi, install with:
-    sudo pip install rgbmatrix
-or build from source: https://github.com/hzeller/rpi-rgb-led-matrix
+The legacy hzeller rpi-rgb-led-matrix library does NOT work on the CM5/Pi 5
+(the RP1 GPIO can't be bit-banged the way that library expects), so this uses
+Adafruit's PIO-based driver instead:
+    pip install Adafruit-Blinka-Raspberry-Pi5-Piomatter
+Requires /dev/pio0 (recent Raspberry Pi firmware + kernel). Falls back silently
+if the library is missing (e.g. development on a non-Pi host).
 
-4-panel wiring (2×2 grid, 128×64 logical canvas):
-  chain_length=2  — two panels chained horizontally per row
-  parallel=2      — two rows of panels stacked vertically
-  rows=32         — physical panel height (library multiplies by parallel)
-  cols=64         — physical panel width  (library multiplies by chain_length)
+Wiring assumed: panels daisy-chained on the Adafruit Triple Matrix Bonnet
+(active3 pinout). `chain_length` panels per port; `parallel` = number of ports
+used (1 = port 1 only). One port drives two lanes (its R1/G1/B1 + R2/G2/B2).
 """
 
 import numpy as np
 
 try:
-    from rgbmatrix import RGBMatrix, RGBMatrixOptions
+    import adafruit_blinka_raspberry_pi5_piomatter as piomatter
+    from adafruit_blinka_raspberry_pi5_piomatter.pixelmappers import simple_multilane_mapper
     _AVAILABLE = True
 except ImportError:
     _AVAILABLE = False
+
+
+def _addr_lines(panel_h: int) -> int:
+    # A panel addresses half its rows: 32 -> 4 (2^4=16), 64 -> 5, 16 -> 3.
+    return (panel_h // 2).bit_length() - 1
 
 
 class HUB75Output:
     def __init__(self, cfg: dict):
         panel = cfg.get('panel', {})
 
-        # Physical panel dimensions (one tile); library builds the logical canvas.
-        self._panel_w = panel.get('panel_width', panel.get('width', 64))
-        self._panel_h = panel.get('panel_height', panel.get('height', 32))
-        self._chain   = panel.get('chain_length', 2)
-        self._parallel = panel.get('parallel', 2)
+        self._panel_w  = panel.get('panel_width',  panel.get('width', 64))
+        self._panel_h  = panel.get('panel_height', panel.get('height', 32))
+        self._chain    = panel.get('chain_length', 2)
+        self._parallel = panel.get('parallel', 1)
 
-        # Logical canvas dimensions
+        # Logical canvas — matches what run.py builds and hands to show().
         self._w = self._panel_w * self._chain
         self._h = self._panel_h * self._parallel
 
         self._matrix = None
-        self._canvas = None
+        self._fb = None
 
         if not _AVAILABLE:
-            print("[hub75] rpi-rgb-led-matrix not available — output disabled")
+            print("[hub75] piomatter not available — output disabled")
             return
 
-        opts = RGBMatrixOptions()
-        opts.rows                     = self._panel_h
-        opts.cols                     = self._panel_w
-        opts.chain_length             = self._chain
-        opts.parallel                 = self._parallel
-        opts.brightness               = panel.get('brightness', 80)
-        opts.hardware_mapping         = panel.get('hardware_mapping', 'regular')
-        opts.gpio_slowdown            = panel.get('gpio_slowdown', 4)
-        opts.disable_hardware_pulsing = True
-        opts.drop_privileges          = True
+        n_addr  = _addr_lines(self._panel_h)
+        n_lanes = 2 * self._parallel          # 2 lanes per active port
+        width   = self._w
+        height  = n_lanes << n_addr           # == panel_h * parallel
 
-        self._matrix = RGBMatrix(options=opts)
-        self._canvas = self._matrix.CreateFrameCanvas()
+        pixelmap = simple_multilane_mapper(width, height, n_addr, n_lanes)
+        geometry = piomatter.Geometry(width=width, height=height,
+                                      n_addr_lines=n_addr, n_planes=10,
+                                      n_temporal_planes=4, map=pixelmap,
+                                      n_lanes=n_lanes)
+
+        self._fb = np.zeros((height, width, 3), dtype=np.uint8)
+        self._matrix = piomatter.PioMatter(
+            colorspace=piomatter.Colorspace.RGB888Packed,
+            pinout=piomatter.Pinout.Active3,
+            framebuffer=self._fb,
+            geometry=geometry,
+        )
 
     def show(self, frame: np.ndarray):
         """Push a (H, W, 3) uint8 RGB frame to the LED panels."""
-        if self._matrix is None or self._canvas is None:
+        if self._matrix is None:
             return
-        from PIL import Image
-        img = Image.fromarray(frame, 'RGB')
-        self._canvas.SetImage(img)
-        self._canvas = self._matrix.SwapOnVSync(self._canvas)
+        # These panels display colors rotated R->G->B; resend as (G,B,R) to correct.
+        self._fb[:] = frame[:, :, [1, 2, 0]]
+        self._matrix.show()
 
     def close(self):
-        if self._matrix:
-            self._matrix.Clear()
+        if self._matrix is not None:
+            self._fb[:] = 0
+            self._matrix.show()
 
     @property
     def available(self) -> bool:

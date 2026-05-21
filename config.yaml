@@ -5,23 +5,24 @@ panel:
   brightness: 80
   hardware_mapping: regular          # regular | adafruit-hat | adafruit-hat-pwm | classic
   gpio_slowdown: 4                   # P2.5 panels typically need 3-4
-  chain_length: 2                    # panels chained horizontally per row
-  parallel: 2                        # rows of panels stacked vertically
-  # Logical canvas = panel_width*chain_length × panel_height*parallel = 128×64
+  chain_length: 2                    # 2 panels daisy-chained on port 1
+  parallel: 1                        # only port 1 in use (triple bonnet supports up to 3)
+  # Logical canvas = panel_width*chain_length × panel_height*parallel = 128×32
 
 display:
   fps: 30
-  preview: true          # true = pygame window (dev); false = HUB75 output (Pi)
+  preview: false         # true = pygame window (dev); false = HUB75 output (Pi)
   preview_scale: 6       # scale factor for the preview window
   background: [0, 0, 0]  # RGB background colour
 
-# ── 4-panel face layout ───────────────────────────────────────────────────────
-# Each entry renders independently to its region of the 128×64 canvas.
+# ── 2-panel face layout (128×32) ──────────────────────────────────────────────
+# Two 64×32 panels chained on port 1. Each panel = an eye (top 16 rows) over a
+# mouth (bottom 16 rows). Each entry renders to its region of the 128×32 canvas.
 # region: [x, y, width, height] in canvas pixels.
 
 panels:
   - name: left_eye
-    region: [0, 0, 64, 32]
+    region: [0, 0, 64, 16]
     face:
       active: left_eye
       wiggle:   {speed: 0.8,  amplitude_x: 2.0, amplitude_y: 1.0}
@@ -32,7 +33,7 @@ panels:
     particles: {active: none}
 
   - name: right_eye
-    region: [64, 0, 64, 32]
+    region: [64, 0, 64, 16]
     face:
       active: right_eye
       wiggle:   {speed: 0.85, amplitude_x: 2.0, amplitude_y: 1.0}  # offset phase
@@ -43,7 +44,7 @@ panels:
     particles: {active: none}
 
   - name: left_mouth
-    region: [0, 32, 64, 32]
+    region: [0, 16, 64, 16]
     face:
       active: left_mouth
       wiggle:   {speed: 0.0, amplitude_x: 0.0, amplitude_y: 0.0}
@@ -55,7 +56,7 @@ panels:
       preset: fire
 
   - name: right_mouth
-    region: [64, 32, 64, 32]
+    region: [64, 16, 64, 16]
     face:
       active: right_mouth
       wiggle:   {speed: 0.0, amplitude_x: 0.0, amplitude_y: 0.0}
