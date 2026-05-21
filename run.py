@@ -31,6 +31,23 @@ from protoface.shm_writer import ShmWriter
 from protoface.inputs.microphone import Microphone
 from protoface.inputs.gyro       import Gyro
 from protoface.inputs.boop       import BoopSensor
+from protoface.keyboard          import KeyReader
+
+
+# Solo-mode (terminal) control palettes — cycled with the keyboard when running
+# directly on the panels (no ProtoHUD/IPC).
+FACE_COLORS = [
+    ("teal",    (  0, 220, 180)),
+    ("red",     (255,   0,   0)),
+    ("orange",  (255, 110,   0)),
+    ("yellow",  (255, 230,   0)),
+    ("green",   (  0, 255,   0)),
+    ("blue",    (  0,  90, 255)),
+    ("purple",  (160,   0, 255)),
+    ("magenta", (255,   0, 150)),
+    ("white",   (255, 255, 255)),
+]
+EFFECTS = ["none", "sparkle", "embers", "confetti", "rain", "snow", "rings", "fireflies"]
 
 
 def load_config(path: str) -> dict:
@@ -168,6 +185,15 @@ def main():
     # ── Master canvas ─────────────────────────────────────────────────────────
     canvas = np.zeros((canvas_h, canvas_w, 3), dtype=np.uint8)
 
+    # ── Solo terminal controls (no-op without a TTY, e.g. under systemd) ───────
+    keyboard     = KeyReader()
+    keyboard.start()
+    face_color_i = 0
+    effect_i     = 0
+    if sys.stdin.isatty():
+        print("Solo controls: c/v face colour  x/z effect  e/w expression  "
+              "b blink  +/- brightness  q quit")
+
     # ── Main loop ─────────────────────────────────────────────────────────────
     target_dt = 1.0 / fps
     prev_time = time.monotonic()
@@ -199,6 +225,40 @@ def main():
                     elif etype == 'prev_expression':
                         for p in panels:
                             p['state'].prev_expression_cmd()
+
+            # ── Terminal key controls (solo mode on the panels) ───────────────
+            key = keyboard.get()
+            if key:
+                if key in ('q', '\x1b'):
+                    running = False
+                elif key in ('c', 'v'):
+                    face_color_i = (face_color_i + (1 if key == 'c' else -1)) % len(FACE_COLORS)
+                    cname, (cr, cg, cb) = FACE_COLORS[face_color_i]
+                    for p in panels:
+                        _, _, pw, ph = p['region']
+                        p['material'][0] = SolidMaterial(cr, cg, cb, pw, ph)
+                    print(f"[face] colour: {cname}")
+                elif key in ('x', 'z'):
+                    effect_i = (effect_i + (1 if key == 'x' else -1)) % len(EFFECTS)
+                    for p in panels:
+                        p['particles'].set_effect(EFFECTS[effect_i])
+                    print(f"[fx] effect: {EFFECTS[effect_i]}")
+                elif key in ('e', 'w'):
+                    for p in panels:
+                        if key == 'e':
+                            p['state'].next_expression()
+                        else:
+                            p['state'].prev_expression_cmd()
+                    print(f"[expr] {panels[0]['state'].expression}")
+                elif key == 'b':
+                    for p in panels:
+                        p['state'].trigger_blink()
+                elif key in ('+', '='):
+                    primary_state.brightness = min(255, primary_state.brightness + 16)
+                    print(f"[brightness] {primary_state.brightness}")
+                elif key in ('-', '_'):
+                    primary_state.brightness = max(16, primary_state.brightness - 16)
+                    print(f"[brightness] {primary_state.brightness}")
 
             # ── Shared inputs ─────────────────────────────────────────────────
             mic.update(dt, sensitivity=panels[0]['face_cfg'].get('mouth_sensitivity', 0.5))
@@ -308,6 +368,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        keyboard.stop()
         ipc.stop()
         shm.close()
         mic.close()

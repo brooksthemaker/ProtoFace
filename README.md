@@ -80,6 +80,17 @@ Preview window keyboard shortcuts:
 | `b` | Manual blink |
 | `ESC` | Quit |
 
+**Solo controls on the panels** — when running `run.py` directly on the hardware (no ProtoHUD/IPC), control it from the terminal (works over SSH; no-ops automatically under systemd):
+
+| Key | Action |
+|-----|--------|
+| `c` / `v` | Next / previous face colour |
+| `x` / `z` | Next / previous particle effect |
+| `e` / `w` | Next / previous expression |
+| `b` | Manual blink |
+| `+` / `-` | Brightness up / down |
+| `q` / `Esc` | Quit |
+
 ---
 
 ## Demo

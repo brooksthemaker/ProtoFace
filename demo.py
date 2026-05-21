@@ -25,6 +25,7 @@ from PIL import Image, ImageDraw, ImageFont
 from protoface.output.hub75 import HUB75Output
 from protoface.renderer import Renderer
 from protoface.particles import ParticleSystem
+from protoface.keyboard import KeyReader
 
 # ── Cyclable colours and effects ──────────────────────────────────────────────
 
@@ -78,35 +79,6 @@ def build_text_layer(mask, color, canvas_w, canvas_h, pw, ph, chain, parallel):
             rgba[y:y+ph, x:x+pw, 2] = color[2]
             rgba[y:y+ph, x:x+pw, 3] = mask
     return rgba
-
-
-class KeyReader:
-    """Non-blocking single-key reader for a POSIX terminal (no-op elsewhere)."""
-
-    def __enter__(self):
-        self._ok = False
-        try:
-            import termios, tty
-            self._termios = termios
-            self._fd = sys.stdin.fileno()
-            self._old = termios.tcgetattr(self._fd)
-            tty.setcbreak(self._fd)
-            self._ok = True
-        except Exception:
-            pass
-        return self
-
-    def get(self):
-        if not self._ok:
-            return None
-        import select
-        if select.select([sys.stdin], [], [], 0)[0]:
-            return sys.stdin.read(1)
-        return None
-
-    def __exit__(self, *a):
-        if self._ok:
-            self._termios.tcsetattr(self._fd, self._termios.TCSADRAIN, self._old)
 
 
 def apply_effect(ps, effect, color):
