@@ -13,6 +13,8 @@ Wiring assumed: panels daisy-chained on the Adafruit Triple Matrix Bonnet
 used (1 = port 1 only). One port drives two lanes (its R1/G1/B1 + R2/G2/B2).
 """
 
+import time
+
 import numpy as np
 
 try:
@@ -76,9 +78,14 @@ class HUB75Output:
         self._matrix.show()
 
     def close(self):
-        if self._matrix is not None:
-            self._fb[:] = 0
-            self._matrix.show()
+        if self._matrix is None:
+            return
+        # Blank the panels and give the PIO a moment to clock out the black frame
+        # before the matrix is torn down, so the display goes dark on exit instead
+        # of freezing on the last frame.
+        self._fb[:] = 0
+        self._matrix.show()
+        time.sleep(0.1)
 
     @property
     def available(self) -> bool:

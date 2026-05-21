@@ -368,13 +368,13 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        out.close()        # blank the panels first, before slower teardown
         keyboard.stop()
         ipc.stop()
         shm.close()
         mic.close()
         gyro.close()
         boop.close()
-        out.close()
         print("Protoface stopped.")
 
 
