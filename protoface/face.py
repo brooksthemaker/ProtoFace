@@ -18,8 +18,8 @@ import numpy as np
 from PIL import Image
 
 
-def _shift_clip(arr: np.ndarray, dy: int, dx: int) -> np.ndarray:
-    """Shift *arr* by (dy, dx) pixels, filling vacated edges with zeros.
+def _shift_int(arr: np.ndarray, dy: int, dx: int) -> np.ndarray:
+    """Shift *arr* by whole pixels (dy, dx), filling vacated edges with zeros.
 
     Unlike np.roll, pixels that move off an edge are discarded rather than
     wrapping around to the opposite side.
@@ -32,6 +32,26 @@ def _shift_clip(arr: np.ndarray, dy: int, dx: int) -> np.ndarray:
     xs_dst = slice(max(0, dx), w - max(0, -dx))
     out[ys_dst, xs_dst] = arr[ys_src, xs_src]
     return out
+
+
+def _shift_clip(arr: np.ndarray, dy: float, dx: float) -> np.ndarray:
+    """Sub-pixel shift by (dy, dx) with zero-filled edges (no wrap).
+
+    Fractional offsets are bilinearly interpolated so motion glides smoothly
+    between pixels instead of jumping a whole pixel at a time.
+    """
+    iy, ix = int(math.floor(dy)), int(math.floor(dx))
+    fy, fx = dy - iy, dx - ix
+    if fy == 0.0 and fx == 0.0:
+        return _shift_int(arr, iy, ix)
+    base = arr.astype(np.float32)
+    a = _shift_int(base, iy,     ix)
+    b = _shift_int(base, iy,     ix + 1)
+    c = _shift_int(base, iy + 1, ix)
+    d = _shift_int(base, iy + 1, ix + 1)
+    out = (a * ((1 - fy) * (1 - fx)) + b * ((1 - fy) * fx)
+           + c * (fy * (1 - fx)) + d * (fy * fx))
+    return np.clip(out, 0, 255).astype(arr.dtype)
 
 
 class FaceLoader:
@@ -186,10 +206,10 @@ class FaceLoader:
         dy = cfg_w['amplitude_y'] * math.sin(
             2 * math.pi * cfg_w['speed'] * state.time * 1.3)
         gx, gy = state.gyro_offset
-        shift_x = int(round(dx + gx))
-        shift_y = int(round(dy + gy))
+        shift_x = dx + gx
+        shift_y = dy + gy
 
-        if shift_x != 0 or shift_y != 0:
+        if abs(shift_x) > 0.01 or abs(shift_y) > 0.01:
             frame = _shift_clip(frame, shift_y, shift_x)
 
         return frame
