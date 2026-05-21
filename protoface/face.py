@@ -19,23 +19,20 @@ from PIL import Image
 
 
 def _shift_int(arr: np.ndarray, dy: int, dx: int) -> np.ndarray:
-    """Shift *arr* by whole pixels (dy, dx), filling vacated edges with zeros.
+    """Shift *arr* by whole pixels (dy, dx).
 
-    Unlike np.roll, pixels that move off an edge are discarded rather than
-    wrapping around to the opposite side.
+    Vacated edges replicate the border pixel (edge clamp) instead of going
+    blank, so a feature drawn to the image edge (mouth/nose) stays anchored to
+    the panel edge as the face moves, rather than opening a gap. No wrap-around.
     """
-    out = np.zeros_like(arr)
     h, w = arr.shape[:2]
-    ys_src = slice(max(0, -dy), h - max(0, dy))
-    ys_dst = slice(max(0, dy), h - max(0, -dy))
-    xs_src = slice(max(0, -dx), w - max(0, dx))
-    xs_dst = slice(max(0, dx), w - max(0, -dx))
-    out[ys_dst, xs_dst] = arr[ys_src, xs_src]
-    return out
+    ys = np.clip(np.arange(h) - dy, 0, h - 1)
+    xs = np.clip(np.arange(w) - dx, 0, w - 1)
+    return arr[ys[:, None], xs[None, :]]
 
 
 def _shift_clip(arr: np.ndarray, dy: float, dx: float) -> np.ndarray:
-    """Sub-pixel shift by (dy, dx) with zero-filled edges (no wrap).
+    """Sub-pixel shift by (dy, dx) with edge-clamped borders (no wrap).
 
     Fractional offsets are bilinearly interpolated so motion glides smoothly
     between pixels instead of jumping a whole pixel at a time.
