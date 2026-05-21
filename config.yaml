@@ -1,114 +1,83 @@
 panel:
-  # Physical dimensions of ONE panel, in pixels.
-  panel_width: 64        # pixels wide per panel   (typical 32 or 64)
-  panel_height: 32       # pixels tall per panel   (16 | 32 | 64)
-  chain_length: 2        # panels daisy-chained per port (1-4+; here 2 on port 1)
-  parallel: 1            # HUB75 ports in use      (1-3 on the triple bonnet)
+  panel_width: 64            #{16-128}
+  panel_height: 32           #{16-64}
+  chain_length: 2            #{1-8}
+  parallel: 1                #{1-3}
   # Logical canvas = panel_width*chain_length × panel_height*parallel = 128×32
-  #
-  # The three below are legacy hzeller (rgbmatrix) options and are IGNORED by the
-  # Piomatter driver on the CM5 — kept only for reference.
-  brightness: 80             # IGNORED (was 0-100). Brightness is set at runtime via
-                             #   FaceState.brightness 0-255 (+/- keys or IPC).
-  hardware_mapping: regular  # IGNORED  (regular | adafruit-hat | adafruit-hat-pwm | classic)
-  gpio_slowdown: 4           # IGNORED  (1-5)
+  brightness: 80             #{ignored}
+  hardware_mapping: regular  #{ignored}
+  gpio_slowdown: 4           #{ignored}
 
 display:
-  fps: 30                # target frames/sec   (10-60; 30 typical, higher = smoother motion)
-  preview: false         # false = HUB75 panels (Pi) | true = pygame window (desktop dev)
-  preview_scale: 6       # preview window zoom  (integer 1-20)
-  background: [0, 0, 0]  # canvas background RGB; each channel 0-255
+  fps: 30                #{10-60}
+  preview: false         #{true|false}
+  preview_scale: 6       #{1-20}
+  background: [0, 0, 0]  #{0-255,0-255,0-255}
 
-# ── 2-panel face layout (128×32) ──────────────────────────────────────────────
-# Two 64×32 panels chained on port 1, both showing the same full face from
-# faces/main. The right panel mirrors the left (mirror_of) so the face is
-# symmetric and the two halves stay perfectly in sync.
-# region: [x, y, width, height] in canvas pixels (0,0 = top-left of the canvas).
-
+# Two 64×32 panels on port 1; right mirrors left (mirror_of). region: [x,y,w,h] in canvas px.
 panels:
-  - name: face_left            # any label (string)
-    region: [0, 0, 64, 32]     # [x, y, w, h] within the 128×32 canvas
+  - name: face_left
+    region: [0, 0, 64, 32]   #{0-127,0-31,1-128,1-32}
     face:
-      active: main             # folder name under faces/
-      # speed: wiggle oscillations per second (0.0-3.0; 0 = still). Vertical runs at 1.3x speed.
-      # amplitude_x / amplitude_y: wiggle travel in pixels (0-10; keep small, ~1-3).
-      wiggle:   {speed: 0.8, amplitude_x: 2.0, amplitude_y: 1.0}
-      # interval_min / interval_max: seconds between blinks (>0, min <= max; e.g. 2-10).
-      # duration: length of a single blink in seconds (0.05-0.5).
-      blink:    {interval_min: 3.0, interval_max: 7.0, duration: 0.15}
-      expression_fade: 0.3     # expression crossfade time in seconds (0.0-2.0; 0 = instant)
-      mouth_sensitivity: 0.5   # mic volume -> mouth-open gain (0.0-2.0; 0 = no mouth motion)
-    # active: material name (teal | rainbow | warm | cool) or 'solid:R,G,B' (0-255 each).
-    # scroll_x / scroll_y: material scroll speed px/sec (-30..30; 0 = static). Wraps (tiles).
-    material: {active: teal, scroll_x: 0.0, scroll_y: 0.0}
-    particles: {active: none}  # 'none' | effect name | {preset: NAME} | {layers: [...]} (see below)
+      active: main           #{faces/ folder}
+      wiggle:   {speed: 0.8, amplitude_x: 2.0, amplitude_y: 1.0}        #{0-3,0-10,0-10}
+      blink:    {interval_min: 3.0, interval_max: 7.0, duration: 0.15}  #{0.5-60,0.5-60,0.05-0.5}
+      expression_fade: 0.3   #{0-2}
+      mouth_sensitivity: 0.5 #{0-2}
+    material: {active: teal, scroll_x: 0.0, scroll_y: 0.0}   #{teal|rainbow|warm|cool|solid:RGB, -30-30, -30-30}
+    particles: {active: none}   #{none|effect|preset|layers}
 
   - name: face_right
-    region: [64, 0, 64, 32]
-    mirror_of: face_left       # name of the panel to mirror (horizontal flip); omit for none
-    face: {active: main}       # built but overwritten by the mirror pass
+    region: [64, 0, 64, 32]  #{0-127,0-31,1-128,1-32}
+    mirror_of: face_left     #{panel name}
+    face: {active: main}
     material: {active: teal}
     particles: {active: none}
 
-# ── Particle reference ────────────────────────────────────────────────────────
-# particles can be:
-#   {active: none}                         — off
-#   {active: embers}                       — single built-in effect
-#   {preset: fire}                         — named preset from particles/presets.yaml
-#                                            (fire | aurora | blizzard | sonar | plasma |
-#                                             celebration | galaxy | party)
-#   {layers: [ ... ]}                      — stacked layers (below)
-# Put particles on face_left only; face_right mirrors it.
-#
+# Effect names: sparkle|snow|embers|confetti|rings|rain|fireflies
+# Presets:      fire|aurora|blizzard|sonar|plasma|celebration|galaxy|party
+# Layered form (put on face_left only; face_right mirrors it):
 #    particles:
 #      layers:
-#        - effect: embers       # sparkle | snow | embers | confetti | rings | rain | fireflies
-#          count: 30            # simultaneous particles (1-100)
-#          colors: [[255, 60, 0], [255, 100, 10]]   # list of [R,G,B], each 0-255
-#          speed_min: 8.0       # spawn speed px/sec (0-60)
-#          speed_max: 22.0      #   >= speed_min
-#          size_min: 1          # particle radius in px (1-4)
-#          size_max: 2          #   >= size_min
-#          blend: add           # add (glow) | normal (opaque)
-#        - effect: sparkle
-#          count: 6
-#          colors: [[255, 255, 220]]
-#          life_min: 0.05       # particle lifetime seconds (0.05-5.0)
-#          life_max: 0.15       #   >= life_min
-#          blend: add
+#        - effect: embers     #{effect name}
+#          count: 30          #{1-100}
+#          colors: [[255,60,0],[255,100,10]]   #{[0-255,0-255,0-255], ...}
+#          speed_min: 8.0     #{0-60}
+#          speed_max: 22.0    #{>=speed_min}
+#          size_min: 1        #{1-4}
+#          size_max: 2        #{>=size_min}
+#          life_min: 0.05     #{0.05-5}
+#          life_max: 0.15     #{>=life_min}
+#          blend: add         #{add|normal}
 
 inputs:
   microphone:
-    enabled: true        # true | false
-    type: usb            # usb | i2s
-    device_index: null   # PyAudio device index (integer) or null = auto-detect
-    # ── I2S MEMS mic options (type: i2s) ──────────────────────────────────────
-    # Requires dtoverlay=i2s-mems-mic (or similar) in /boot/firmware/config.txt.
-    # device_name: i2s   # substring matched against the ALSA device name
-    # channel: 0         # 0 = left | 1 = right
-    sample_rate: 44100   # Hz   (16000 | 44100 | 48000)
-    chunk: 1024          # samples per read, power of two (256-4096)
-    smoothing: 0.15      # EMA factor 0.0-1.0 (lower = smoother / slower response)
+    enabled: true        #{true|false}
+    type: usb            #{usb|i2s}
+    device_index: null   #{int|null}
+    sample_rate: 44100   #{16000|44100|48000}
+    chunk: 1024          #{256-4096}
+    smoothing: 0.15      #{0-1}
+    # i2s only: device_name (str), channel #{0|1}; needs dtoverlay=i2s-mems-mic in /boot/firmware/config.txt
 
   gyro:
-    enabled: false       # true | false (needs an MPU-6050 on I2C)
-    i2c_address: 0x68    # 0x68 (AD0=GND) | 0x69 (AD0=high)
-    sensitivity: 0.4     # pixels of face offset per degree of tilt (0.0-2.0)
-    max_offset: 8        # offset clamp in pixels (0-16)
+    enabled: false       #{true|false}
+    i2c_address: 0x68    #{0x68|0x69}
+    sensitivity: 0.4     #{0-2}
+    max_offset: 8        #{0-16}
 
   boop:
-    enabled: false       # true | false
-    gpio_pin: 17         # BCM pin (0-27). MUST be free of the active3 matrix pinout —
-                         #   the default 17 likely clashes; pick an unused pin.
-    expression: surprised  # expression to show on boop (must exist in the face folder)
-    duration: 2.0        # seconds to hold the expression (>0)
-    debounce: 0.05       # seconds to ignore repeat triggers (0.01-0.5)
+    enabled: false       #{true|false}
+    gpio_pin: 17         #{0-27, avoid matrix pins}
+    expression: surprised #{expression name}
+    duration: 2.0        #{>0}
+    debounce: 0.05       #{0.01-0.5}
 
 gif:
-  folder: gifs           # directory of .gif files (relative to the project)
-  auto_cycle: false      # true | false — cycle GIFs automatically
-  cycle_interval: 30.0   # seconds between auto-cycles (>0)
+  folder: gifs           #{path}
+  auto_cycle: false      #{true|false}
+  cycle_interval: 30.0   #{>0}
 
 ipc:
-  socket: /run/protoface.sock        # Unix socket: ProtoHUD → Protoface commands
-  shm_path: /dev/shm/protoface_frame # shared memory: Protoface → ProtoHUD preview
+  socket: /run/protoface.sock        #{path}
+  shm_path: /dev/shm/protoface_frame #{path}
