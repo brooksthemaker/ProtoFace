@@ -18,6 +18,22 @@ import numpy as np
 from PIL import Image
 
 
+def _shift_clip(arr: np.ndarray, dy: int, dx: int) -> np.ndarray:
+    """Shift *arr* by (dy, dx) pixels, filling vacated edges with zeros.
+
+    Unlike np.roll, pixels that move off an edge are discarded rather than
+    wrapping around to the opposite side.
+    """
+    out = np.zeros_like(arr)
+    h, w = arr.shape[:2]
+    ys_src = slice(max(0, -dy), h - max(0, dy))
+    ys_dst = slice(max(0, dy), h - max(0, -dy))
+    xs_src = slice(max(0, -dx), w - max(0, dx))
+    xs_dst = slice(max(0, dx), w - max(0, -dx))
+    out[ys_dst, xs_dst] = arr[ys_src, xs_src]
+    return out
+
+
 class FaceLoader:
     def __init__(self, folder: str, width: int, height: int):
         self.w = width
@@ -174,8 +190,7 @@ class FaceLoader:
         shift_y = int(round(dy + gy))
 
         if shift_x != 0 or shift_y != 0:
-            frame = np.roll(frame, shift_y, axis=0)
-            frame = np.roll(frame, shift_x, axis=1)
+            frame = _shift_clip(frame, shift_y, shift_x)
 
         return frame
 
