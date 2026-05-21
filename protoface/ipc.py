@@ -14,6 +14,7 @@ Supported commands (JSON objects, one per line):
     {"cmd": "set_menu_item",  "menu_index":8, "value":1}
     {"cmd": "request_status"}
     {"cmd": "release_control"}
+    {"cmd": "shutdown"}          # clean exit (used by ProtoHUD restart)
 
 set_effect effect_id mapping (numeric IDs, matches ProtoTracer indices):
     0=none,       1=sparkle,   2=embers,    3=rain,
@@ -240,6 +241,14 @@ class IpcServer:
         elif cmd == 'release_control':
             for p in self._panels:
                 p['state'].release_ipc_control()
+
+        elif cmd == 'shutdown':
+            # Clean exit: raise SIGINT in the main thread so run.py's
+            # KeyboardInterrupt path runs (blank panels, unlink socket, release
+            # the single-instance lock). Used by ProtoHUD's "Restart Protoface".
+            self._reply(conn, {'cmd': 'shutdown', 'ok': True})
+            import signal
+            os.kill(os.getpid(), signal.SIGINT)
 
         else:
             print(f'[ipc] unknown cmd: {cmd!r}')
