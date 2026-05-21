@@ -129,7 +129,7 @@ def main():
 
                 k = keys.get()
                 if k:
-                    if k in ("q", "\x1b"):
+                    if k == "q":   # not ESC: arrow/function keys send ESC sequences
                         running = False
                     elif k in ("c", "v"):
                         color_i = (color_i + (1 if k == "c" else -1)) % len(COLORS)

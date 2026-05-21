@@ -276,7 +276,7 @@ def main():
             # ── Terminal key controls (solo mode on the panels) ───────────────
             key = keyboard.get()
             if key:
-                if key in ('q', '\x1b'):
+                if key == 'q':   # not ESC: arrow/function keys send ESC sequences
                     running = False
                 elif key in ('c', 'v'):
                     face_color_i = (face_color_i + (1 if key == 'c' else -1)) % len(FACE_COLORS)
