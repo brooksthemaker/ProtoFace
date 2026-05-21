@@ -14,7 +14,10 @@ import time
 
 class FaceState:
     def __init__(self, cfg: dict, expression_names: list[str]):
-        face_cfg  = cfg.get('face', {})
+        # `cfg` IS the panel's face config dict (run.py passes pcfg['face']),
+        # so use it directly — do NOT look for a nested 'face' key, or the
+        # wiggle / blink / expression_fade settings get silently ignored.
+        face_cfg  = cfg or {}
         blink_cfg = face_cfg.get('blink', {})
 
         self._expressions    = expression_names
