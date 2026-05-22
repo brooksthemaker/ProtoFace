@@ -153,6 +153,46 @@ celebration:
       life_max: 0.25
       blend: add
 
+# Deep-space nebula: big slow gas clumps, smaller wispy clumps, sparkle stars.
+# A good template for layering clouds — stack a slow/large layer under a
+# faster/smaller, wispier one, then add a few sparkles as stars.
+nebula:
+  layers:
+    - effect: clouds          # background gas: large, slow, gentle
+      count: 4
+      size_min: 10
+      size_max: 18
+      lobes_min: 3
+      lobes_max: 6
+      turbulence: 0.55
+      churn: 0.3
+      alpha_min: 0.18
+      alpha_max: 0.4
+      speed_min: 0.5
+      speed_max: 1.8
+      colors: [[150,40,140],[90,60,200],[40,90,200]]
+      blend: add
+    - effect: clouds          # foreground wisps: smaller, faster, streakier
+      count: 5
+      size_min: 5
+      size_max: 9
+      lobes_min: 2
+      lobes_max: 4
+      turbulence: 0.8
+      churn: 0.5
+      alpha_min: 0.15
+      alpha_max: 0.4
+      speed_min: 1.5
+      speed_max: 4.0
+      colors: [[220,80,170],[60,160,200],[120,80,210]]
+      blend: add
+    - effect: sparkle         # stars
+      count: 10
+      colors: [[255,255,255],[200,220,255]]
+      life_min: 0.4
+      life_max: 1.2
+      blend: add
+
 # Cold cyan embers rising — ghost fire or electric
 plasma:
   layers:
