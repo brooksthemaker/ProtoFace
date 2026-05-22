@@ -94,6 +94,7 @@ gif:
   folder: gifs           #{path}
   auto_cycle: false      #{true|false}
   cycle_interval: 30.0   #{>0}
+  hold_seconds: 5.0      #{>=0}  play_gif holds this long, then releases to the face (0 = until released)
 
 ipc:
   socket: /tmp/protoface.sock        #{path}  (/run is root-only; /tmp is user-writable)

@@ -193,6 +193,9 @@ def main():
     gif_auto     = gif_cfg.get('auto_cycle', False)
     gif_interval = gif_cfg.get('cycle_interval', 30.0)
     gif_timer    = gif_interval
+    # How long a GIF triggered by play_gif holds before releasing back to the
+    # face. Restarts each time a new GIF is requested (handled in GifPlayer).
+    gif_hold     = gif_cfg.get('hold_seconds', 5.0)
 
     mic  = Microphone(cfg)
     gyro = Gyro(cfg)
@@ -372,7 +375,7 @@ def main():
                 if ipc_reqs['gif_request'] is not None:
                     gi = ipc_reqs['gif_request']
                     if 0 <= gi < len(gif_files):
-                        p['gif'].load(gif_files[gi])
+                        p['gif'].load(gif_files[gi], hold_seconds=gif_hold)
                 if ipc_reqs['release']:
                     p['gif'].stop()
 

@@ -32,11 +32,19 @@ class GifPlayer:
         self._elapsed   = 0.0
         self._playing   = False
         self._loop      = True
+        self._hold      = 0.0   # auto-release after this many seconds (0 = never)
+        self._held      = 0.0   # seconds played since the current load()
 
     # ── Loading ───────────────────────────────────────────────────────────────
 
-    def load(self, path: str, loop: bool = True):
-        """Decode all frames from *path*.  Call with None to stop playback."""
+    def load(self, path: str, loop: bool = True, hold_seconds: float = 0.0):
+        """Decode all frames from *path*.  Call with None to stop playback.
+
+        When *hold_seconds* > 0 the clip auto-stops that many seconds after this
+        call, then get_frame() returns None again so the face shows through. The
+        hold timer is reset on every load(), so selecting a new GIF restarts the
+        countdown.
+        """
         if path is None:
             self.stop()
             return
@@ -69,17 +77,25 @@ class GifPlayer:
         self._loop      = loop
         self._frame_idx = 0
         self._elapsed   = 0.0
+        self._hold      = max(0.0, hold_seconds)
+        self._held      = 0.0
         self._playing   = True
 
     def stop(self):
         self._playing = False
         self._frames  = []
+        self._held    = 0.0
 
     # ── Playback ──────────────────────────────────────────────────────────────
 
     def update(self, dt: float):
         if not self._playing or not self._frames:
             return
+        if self._hold > 0.0:
+            self._held += dt
+            if self._held >= self._hold:
+                self.stop()
+                return
         self._elapsed += dt
         while self._elapsed >= self._durations[self._frame_idx]:
             self._elapsed -= self._durations[self._frame_idx]
