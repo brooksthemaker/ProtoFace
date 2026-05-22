@@ -7,7 +7,7 @@
     "surprised": "surprised.png"
   },
   "blink": "blink.png",
-  "eye_left":  {"x": 14, "y": 10, "w": 12, "h": 6},
-  "eye_right": {"x": 42, "y": 10, "w": 12, "h": 6},
-  "mouth":     {"x": 22, "y": 22, "w": 20, "h": 8}
+  "draw_size": [128, 64],
+  "eye_left":  {"x": 0, "y": 0, "w": 64, "h": 48},
+  "mouth":     {"x": 44, "y": 44, "w": 40, "h": 16}
 }

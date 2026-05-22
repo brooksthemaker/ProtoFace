@@ -116,9 +116,23 @@ class FaceLoader:
         if mouth_open_path.exists():
             self._mouth_open_img = self._load_png(mouth_open_path)
 
-        # Region definitions (pixel coords in original panel space)
+        # Region definitions. By default boxes are in panel pixels (self.w x
+        # self.h). If config.json gives draw_size: [W, H], boxes are authored in
+        # that resolution (e.g. your 128x64 art) and scaled down to the panel.
+        draw = cfg.get('draw_size')
+        if draw and len(draw) == 2 and draw[0] and draw[1]:
+            sx = self.w / float(draw[0])
+            sy = self.h / float(draw[1])
+        else:
+            sx = sy = 1.0
+
         def parse_region(d: dict) -> dict:
-            return {'x': d['x'], 'y': d['y'], 'w': d['w'], 'h': d['h']}
+            return {
+                'x': int(round(d['x'] * sx)),
+                'y': int(round(d['y'] * sy)),
+                'w': max(1, int(round(d['w'] * sx))),
+                'h': max(1, int(round(d['h'] * sy))),
+            }
 
         if 'eye_left' in cfg:
             self._eye_left = parse_region(cfg['eye_left'])
