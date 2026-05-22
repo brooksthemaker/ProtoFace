@@ -474,110 +474,160 @@ class FirefliesEffect(BaseEffect):
 # ── Clouds ────────────────────────────────────────────────────────────────────
 
 class CloudsEffect(BaseEffect):
-    """Soft, semi-transparent blobs that drift slowly sideways.
+    """Drifting nebula clumps — irregular, wispy, semi-transparent.
 
-    Each cloud is a fuzzy disk whose alpha fades from its centre to its edge,
-    so several overlapping at mixed sizes read as drifting clouds rather than
-    hard dots. Sizes are drawn per-cloud from ``size_min``/``size_max`` so a
-    single layer naturally mixes big and small puffs. Per-cloud opacity is
-    drawn from ``alpha_min``/``alpha_max``. Clouds wrap horizontally so the
-    field never empties.
+    Each "cloud" is not a single disk but a clump of several offset *lobes*, so
+    its silhouette is irregular rather than round. Every lobe picks a colour
+    from the palette, so a clump blends multiple hues like a real nebula, and a
+    per-clump turbulence field eats into the density to give a soft, streaky,
+    wispy texture. ``size_min``/``size_max`` mix big and small clumps in one
+    layer; ``alpha_min``/``alpha_max`` set per-clump opacity. Clumps drift
+    sideways and wrap horizontally so the field never empties.
 
     Per-layer keys (all optional):
-        count       int    number of clouds            (default 6)
-        size_min    int    min radius in pixels        (default 5)
-        size_max    int    max radius in pixels        (default 16)
-        alpha_min   float  min centre opacity 0..1     (default 0.15)
-        alpha_max   float  max centre opacity 0..1     (default 0.5)
-        speed_min   float  min drift px/s              (default 1.5)
-        speed_max   float  max drift px/s              (default 5.0)
-        colors      list   [[r,g,b], ...]              (default soft white/grey)
-        softness    float  edge feather 0..1; higher = softer (default 0.6)
-        blend       str    'normal' (default) | 'add'
+        count       int    number of clumps            (default 6)
+        size_min    int    min clump radius in px       (default 5)
+        size_max    int    max clump radius in px       (default 16)
+        lobes_min   int    min sub-blobs per clump      (default 3)
+        lobes_max   int    max sub-blobs per clump      (default 6)
+        turbulence  float  wispiness 0..1; 0=smooth     (default 0.6)
+        churn       float  internal swirl speed (rad/s) (default 0.4)
+        alpha_min   float  min opacity 0..1             (default 0.15)
+        alpha_max   float  max opacity 0..1             (default 0.5)
+        speed_min   float  min drift px/s               (default 1.5)
+        speed_max   float  max drift px/s               (default 5.0)
+        softness    float  edge feather 0..1            (default 0.6)
+        colors      list   [[r,g,b], ...] palette (default nebula magenta/blue)
+        blend       str    'add' (default, glowy) | 'normal' (matte/translucent)
     """
 
-    _DEFAULT_COLORS = [[210, 210, 220], [235, 235, 240], [190, 195, 210]]
+    # Default nebula palette: magenta → violet → blue → teal → pink.
+    _DEFAULT_COLORS = [
+        (200, 70, 150), (120, 80, 210), (70, 120, 220),
+        (40, 170, 190), (230, 120, 180),
+    ]
+
+    def _palette(self) -> list[tuple[int, int, int]]:
+        pool = self.cfg.get('colors') or self._DEFAULT_COLORS
+        return [(int(c[0]), int(c[1]), int(c[2])) for c in pool]
+
+    def _make_lobes(self, R: float, pool: list) -> list:
+        """Build a clump as a centre lobe plus offset satellite lobes."""
+        lo = int(self.cfg.get('lobes_min', 3))
+        hi = int(self.cfg.get('lobes_max', 6))
+        n = max(1, random.randint(min(lo, hi), max(lo, hi)))
+        lobes = []
+        for i in range(n):
+            if i == 0:
+                ox = oy = 0.0
+                lr = R * random.uniform(0.55, 0.9)
+            else:
+                ang  = random.uniform(0, math.tau)
+                dist = random.uniform(0.2, 0.75) * R
+                ox = math.cos(ang) * dist
+                oy = math.sin(ang) * dist
+                lr = R * random.uniform(0.3, 0.7)
+            lobes.append((ox, oy, max(1.0, lr),
+                          random.uniform(0.5, 1.0), random.choice(pool)))
+        return lobes
+
+    def _reseed(self, p: Particle):
+        p.lobes = self._make_lobes(float(p.size), self._palette())
 
     def _spawn(self, x: float | None = None) -> Particle:
-        if self.cfg.get('colors') or self.cfg.get('color'):
-            r, g, b = _pick_color(self.cfg)
-        else:
-            c = random.choice(self._DEFAULT_COLORS)
-            r, g, b = c[0], c[1], c[2]
+        R = float(_size(self.cfg, 5, 16))
         spd = _speed(self.cfg, 1.5, 5.0)
-        # Random drift direction; bias right slightly so a still field looks alive.
-        if random.random() < 0.5:
+        if random.random() < 0.5:           # drift either direction
             spd = -spd
         alpha = random.uniform(
             self.cfg.get('alpha_min', 0.15),
             self.cfg.get('alpha_max', 0.5),
         )
-        size = _size(self.cfg, 5, 16)
         if x is None:
             x = random.uniform(0, self.w - 1)
-        return Particle(
-            x=x,
-            y=random.uniform(0, self.h - 1),
-            vx=spd,
-            life=1.0, max_life=9999,
-            r=r, g=g, b=b,
-            size=size,
-            extra=alpha,
+        p = Particle(
+            x=x, y=random.uniform(0, self.h - 1),
+            vx=spd, life=1.0, max_life=9999,
+            size=int(round(R)), extra=alpha,
         )
+        p.lobes = self._make_lobes(R, self._palette())
+        rf = lambda: random.uniform(0.2, 0.6)   # turbulence spatial freqs
+        p.warp = (rf(), rf(), random.uniform(0, math.tau),
+                  rf(), rf(), random.uniform(0, math.tau))
+        p.phase = random.uniform(0, math.tau)
+        return p
 
     def update(self, dt: float):
+        churn = float(self.cfg.get('churn', 0.4))
         for p in self.particles:
             p.x += p.vx * dt
-            # Wrap horizontally, accounting for the cloud radius so it glides
-            # fully off one edge before reappearing on the other.
-            margin = p.size + 2
+            p.phase += dt * churn           # slow internal swirl
+            # Wrap horizontally; account for the clump reach so it glides fully
+            # off one edge before reappearing on the other (then reseed shape).
+            margin = p.size * 2 + 2
             if p.vx >= 0 and p.x - margin > self.w:
-                p.x = -margin
-                p.y = random.uniform(0, self.h - 1)
+                p.x = -margin; p.y = random.uniform(0, self.h - 1); self._reseed(p)
             elif p.vx < 0 and p.x + margin < 0:
-                p.x = self.w + margin
-                p.y = random.uniform(0, self.h - 1)
+                p.x = self.w + margin; p.y = random.uniform(0, self.h - 1); self._reseed(p)
 
         while len(self.particles) < self._count(6):
             self.particles.append(self._spawn())
 
-    def _draw_soft_disk(self, canvas: np.ndarray, cx: float, cy: float,
-                        radius: int, r: int, g: int, b: int, base_alpha: float):
-        """Add one feathered disk to *canvas* (float RGBA accumulator).
-
-        Alpha falls from ``base_alpha`` at the centre to 0 at the edge with a
-        softness-controlled curve; colour is alpha-weighted so overlaps blend
-        smoothly.  Uses a max-union on alpha so stacked clouds don't blow out.
-        """
-        if radius < 1:
-            radius = 1
-        x0 = int(math.floor(cx - radius)); x1 = int(math.ceil(cx + radius)) + 1
-        y0 = int(math.floor(cy - radius)); y1 = int(math.ceil(cy + radius)) + 1
+    def _draw_clump(self, acc: np.ndarray, p: Particle, power: float):
+        """Render one nebula clump (offset lobes + turbulence) into *acc*."""
+        lobes = getattr(p, 'lobes', None)
+        if not lobes:
+            return
+        R = max(1.0, float(p.size))
+        reach = R * 1.7
+        x0 = int(math.floor(p.x - reach)); x1 = int(math.ceil(p.x + reach)) + 1
+        y0 = int(math.floor(p.y - reach)); y1 = int(math.ceil(p.y + reach)) + 1
         x0c, x1c = max(0, x0), min(self.w, x1)
         y0c, y1c = max(0, y0), min(self.h, y1)
         if x0c >= x1c or y0c >= y1c:
             return
         ys, xs = np.ogrid[y0c:y1c, x0c:x1c]
-        d = np.sqrt((xs - cx) ** 2 + (ys - cy) ** 2) / float(radius)
-        softness = float(np.clip(self.cfg.get('softness', 0.6), 0.0, 1.0))
-        # falloff: 1 at centre → 0 at edge; raise to a power so higher softness
-        # spreads the feather wider.
-        falloff = np.clip(1.0 - d, 0.0, 1.0) ** (1.0 + (1.0 - softness) * 2.0)
-        a = falloff * base_alpha           # 0..base_alpha
-        sub = canvas[y0c:y1c, x0c:x1c]
-        # max-union alpha; colour follows whichever contribution is strongest.
+        xs = xs.astype(np.float32); ys = ys.astype(np.float32)
+        shp = (y1c - y0c, x1c - x0c)
+        wsum = np.zeros(shp, dtype=np.float32)
+        cr = np.zeros(shp, dtype=np.float32)
+        cg = np.zeros(shp, dtype=np.float32)
+        cb = np.zeros(shp, dtype=np.float32)
+        for ox, oy, lr, wt, (lcr, lcg, lcb) in lobes:
+            d = np.sqrt((xs - (p.x + ox)) ** 2 + (ys - (p.y + oy)) ** 2) / lr
+            f = np.clip(1.0 - d, 0.0, 1.0) ** power
+            f *= wt
+            wsum += f
+            cr += f * lcr; cg += f * lcg; cb += f * lcb
+
+        # Wispy turbulence (cloud-local coords; churns slowly via p.phase).
+        f1, g1, ph1, f2, g2, ph2 = p.warp
+        lx = xs - p.x; ly = ys - p.y
+        n1 = 0.5 + 0.5 * np.sin(lx * f1 + ly * g1 + ph1 + p.phase)
+        n2 = 0.5 + 0.5 * np.sin(lx * f2 - ly * g2 + ph2 - p.phase * 0.7)
+        turb = 0.6 * n1 + 0.4 * n2
+        floor = 1.0 - float(np.clip(self.cfg.get('turbulence', 0.6), 0.0, 1.0))
+        turb = floor + (1.0 - floor) * turb
+
+        dens = np.clip(wsum * turb, 0.0, 1.0)
+        a = dens * float(p.extra)                 # 0..base_alpha
+        safe = np.where(wsum > 1e-6, wsum, 1.0)   # hue = falloff-weighted mean
+        rr = cr / safe; gg = cg / safe; bb = cb / safe
+
+        sub = acc[y0c:y1c, x0c:x1c]
         stronger = a > sub[:, :, 3]
-        sub[:, :, 0] = np.where(stronger, r, sub[:, :, 0])
-        sub[:, :, 1] = np.where(stronger, g, sub[:, :, 1])
-        sub[:, :, 2] = np.where(stronger, b, sub[:, :, 2])
+        sub[:, :, 0] = np.where(stronger, rr, sub[:, :, 0])
+        sub[:, :, 1] = np.where(stronger, gg, sub[:, :, 1])
+        sub[:, :, 2] = np.where(stronger, bb, sub[:, :, 2])
         sub[:, :, 3] = np.maximum(sub[:, :, 3], a)
 
     def render(self) -> np.ndarray:
         acc = np.zeros((self.h, self.w, 4), dtype=np.float32)
-        # Draw biggest first so smaller, brighter puffs win the max-union on top.
+        softness = float(np.clip(self.cfg.get('softness', 0.6), 0.0, 1.0))
+        power = 1.0 + (1.0 - softness) * 2.0
+        # Biggest first so smaller, denser clumps win the max-union on top.
         for p in sorted(self.particles, key=lambda q: -q.size):
-            self._draw_soft_disk(acc, p.x, p.y, p.size,
-                                 int(p.r), int(p.g), int(p.b), float(p.extra))
+            self._draw_clump(acc, p, power)
         out = np.zeros((self.h, self.w, 4), dtype=np.uint8)
         out[:, :, :3] = np.clip(acc[:, :, :3], 0, 255).astype(np.uint8)
         out[:, :, 3] = np.clip(acc[:, :, 3] * 255.0, 0, 255).astype(np.uint8)

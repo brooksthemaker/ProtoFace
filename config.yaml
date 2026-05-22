@@ -49,20 +49,26 @@ panels:
 #          life_min: 0.05     #{0.05-5}
 #          life_max: 0.15     #{>=life_min}
 #          blend: add         #{add|normal}
-# Clouds layer (soft semi-transparent blobs; size_min/max mix puffs in one layer):
+# Clouds = drifting nebula clumps (irregular, wispy, multi-hue). size_min/max
+# mix big & small clumps; lobes_min/max set how blobby/irregular each one is;
+# turbulence adds the wispy streaks. Omit colors for the default nebula palette.
 #    particles:
 #      layers:
 #        - effect: clouds       #{effect name}
 #          count: 6             #{1-100}
-#          size_min: 5          #{1-30}   small puffs
-#          size_max: 16         #{>=size_min}   big puffs
-#          alpha_min: 0.15      #{0-1}    faintest centre opacity
-#          alpha_max: 0.5       #{>=alpha_min}  densest centre opacity
+#          size_min: 6          #{1-30}   small clumps
+#          size_max: 16         #{>=size_min}   big clumps
+#          lobes_min: 3         #{1-10}   fewer = rounder
+#          lobes_max: 6         #{>=lobes_min}  more = more irregular
+#          turbulence: 0.6      #{0-1}    0 = smooth, 1 = very wispy
+#          churn: 0.4           #{0-3}    internal swirl speed (rad/s)
+#          alpha_min: 0.15      #{0-1}    faintest opacity
+#          alpha_max: 0.5       #{>=alpha_min}  densest opacity
 #          softness: 0.6        #{0-1}    higher = softer/feathered edges
-#          speed_min: 1.5       #{0-30}   drift px/s
-#          speed_max: 5.0       #{>=speed_min}
-#          colors: [[200,200,220]]        #{[0-255,0-255,0-255], ...}
-#          blend: normal        #{add|normal}  (normal keeps them translucent)
+#          speed_min: 1.0       #{0-30}   drift px/s
+#          speed_max: 4.0       #{>=speed_min}
+#          colors: [[200,70,150],[120,80,210],[70,120,220],[40,170,190]]  #{[0-255,...], ...}
+#          blend: add           #{add|normal}  (add = glowy nebula; normal = matte)
 
 # ── Baked-in effects ──────────────────────────────────────────────────────────
 # Each enabled effect is layered onto the face (combine freely). Toggle with
