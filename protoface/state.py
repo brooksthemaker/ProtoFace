@@ -47,7 +47,7 @@ class FaceState:
 
         # Wiggle config (passed through to face.py)
         self.wiggle_cfg = face_cfg.get('wiggle', {
-            'speed': 0.8, 'amplitude_x': 2.0, 'amplitude_y': 1.0})
+            'speed': 0.3, 'amplitude_x': 2.0, 'amplitude_y': 1.0})
 
         # Audio
         self.audio_volume = 0.0
