@@ -94,6 +94,7 @@ gif:
   folder: gifs           #{path}
   auto_cycle: false      #{true|false}
   cycle_interval: 30.0   #{>0}
+  auto_release: 5.0      #{>=0; secs after a play_gif to revert to the face; 0=loop forever}
 
 ipc:
   socket: /tmp/protoface.sock        #{path}  (/run is root-only; /tmp is user-writable)

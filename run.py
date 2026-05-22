@@ -193,6 +193,8 @@ def main():
     gif_auto     = gif_cfg.get('auto_cycle', False)
     gif_interval = gif_cfg.get('cycle_interval', 30.0)
     gif_timer    = gif_interval
+    gif_release  = gif_cfg.get('auto_release', 5.0)   # secs after play_gif to revert; 0 = off
+    gif_release_timer = 0.0
 
     mic  = Microphone(cfg)
     gyro = Gyro(cfg)
@@ -373,8 +375,10 @@ def main():
                     gi = ipc_reqs['gif_request']
                     if 0 <= gi < len(gif_files):
                         p['gif'].load(gif_files[gi])
+                        gif_release_timer = gif_release   # arm auto-revert (0 = off)
                 if ipc_reqs['release']:
                     p['gif'].stop()
+                    gif_release_timer = 0.0
 
                 s.update(dt)
                 p['material'][0].update(dt)
@@ -388,6 +392,16 @@ def main():
                     for p in panels:
                         p['gif'].load(gif_files[gif_idx])
                     gif_idx = (gif_idx + 1) % len(gif_files)
+
+            # GIF auto-revert: N seconds after a play_gif, do the "release"
+            # action (stop the GIF → back to the face). 0 disables (loops forever).
+            if gif_release_timer > 0:
+                gif_release_timer -= dt
+                if gif_release_timer <= 0:
+                    gif_release_timer = 0.0
+                    for p in panels:
+                        p['gif'].stop()
+
             for p in panels:
                 p['gif'].update(dt)
 
