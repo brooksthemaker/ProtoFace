@@ -78,6 +78,16 @@ class FaceState:
         self.expression = name
         self.transition_t = 0.0
 
+    def set_expression_by_index(self, idx: int):
+        """Select an expression (face) by its position in the loaded set.
+
+        Out-of-range indices are ignored so an over-eager id (e.g. face 9 on a
+        5-face set) is a no-op rather than an error.
+        """
+        if 0 <= idx < len(self._expressions):
+            self._expr_idx = idx
+            self.set_expression(self._expressions[idx])
+
     def next_expression(self):
         if not self._expressions:
             return

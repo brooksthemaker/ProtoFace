@@ -8,6 +8,7 @@ Supported commands (JSON objects, one per line):
     {"cmd": "set_color",      "r":0, "g":220, "b":180, "layer":0}
     {"cmd": "set_effect",     "effect_id":3, "p1":0, "p2":0}
     {"cmd": "set_effect",     "layers":[{"effect":"embers",...}, ...]}
+    {"cmd": "set_face",       "face_id":1}
     {"cmd": "play_gif",       "gif_id":2}
     {"cmd": "set_brightness", "value":200}
     {"cmd": "set_palette",    "palette_id":1}
@@ -25,6 +26,9 @@ set_effect effect_id mapping (numeric IDs, matches ProtoTracer indices):
 
 set_effect with "layers" key accepts a full multi-layer config instead of
 a numeric ID — any structure accepted by ParticleSystem.set_effect() works.
+
+set_face face_id is the 0-based index of an expression in the active face's
+loaded set (order from the face's config.json). Out-of-range IDs are ignored.
 
 set_menu_item menu_index 8 → material colour preset (matches ProtoTracer list).
 """
@@ -206,6 +210,11 @@ class IpcServer:
             for p in self._panels:
                 p['particles'].set_effect(effect_cfg)
             self._track(particles=effect_cfg)
+
+        elif cmd == 'set_face':
+            face_id = int(msg.get('face_id', 0))
+            for p in self._panels:
+                p['state'].set_expression_by_index(face_id)
 
         elif cmd == 'play_gif':
             gif_id = int(msg.get('gif_id', 0))
