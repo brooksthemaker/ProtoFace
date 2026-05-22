@@ -471,6 +471,119 @@ class FirefliesEffect(BaseEffect):
         return canvas
 
 
+# ── Clouds ────────────────────────────────────────────────────────────────────
+
+class CloudsEffect(BaseEffect):
+    """Soft, semi-transparent blobs that drift slowly sideways.
+
+    Each cloud is a fuzzy disk whose alpha fades from its centre to its edge,
+    so several overlapping at mixed sizes read as drifting clouds rather than
+    hard dots. Sizes are drawn per-cloud from ``size_min``/``size_max`` so a
+    single layer naturally mixes big and small puffs. Per-cloud opacity is
+    drawn from ``alpha_min``/``alpha_max``. Clouds wrap horizontally so the
+    field never empties.
+
+    Per-layer keys (all optional):
+        count       int    number of clouds            (default 6)
+        size_min    int    min radius in pixels        (default 5)
+        size_max    int    max radius in pixels        (default 16)
+        alpha_min   float  min centre opacity 0..1     (default 0.15)
+        alpha_max   float  max centre opacity 0..1     (default 0.5)
+        speed_min   float  min drift px/s              (default 1.5)
+        speed_max   float  max drift px/s              (default 5.0)
+        colors      list   [[r,g,b], ...]              (default soft white/grey)
+        softness    float  edge feather 0..1; higher = softer (default 0.6)
+        blend       str    'normal' (default) | 'add'
+    """
+
+    _DEFAULT_COLORS = [[210, 210, 220], [235, 235, 240], [190, 195, 210]]
+
+    def _spawn(self, x: float | None = None) -> Particle:
+        if self.cfg.get('colors') or self.cfg.get('color'):
+            r, g, b = _pick_color(self.cfg)
+        else:
+            c = random.choice(self._DEFAULT_COLORS)
+            r, g, b = c[0], c[1], c[2]
+        spd = _speed(self.cfg, 1.5, 5.0)
+        # Random drift direction; bias right slightly so a still field looks alive.
+        if random.random() < 0.5:
+            spd = -spd
+        alpha = random.uniform(
+            self.cfg.get('alpha_min', 0.15),
+            self.cfg.get('alpha_max', 0.5),
+        )
+        size = _size(self.cfg, 5, 16)
+        if x is None:
+            x = random.uniform(0, self.w - 1)
+        return Particle(
+            x=x,
+            y=random.uniform(0, self.h - 1),
+            vx=spd,
+            life=1.0, max_life=9999,
+            r=r, g=g, b=b,
+            size=size,
+            extra=alpha,
+        )
+
+    def update(self, dt: float):
+        for p in self.particles:
+            p.x += p.vx * dt
+            # Wrap horizontally, accounting for the cloud radius so it glides
+            # fully off one edge before reappearing on the other.
+            margin = p.size + 2
+            if p.vx >= 0 and p.x - margin > self.w:
+                p.x = -margin
+                p.y = random.uniform(0, self.h - 1)
+            elif p.vx < 0 and p.x + margin < 0:
+                p.x = self.w + margin
+                p.y = random.uniform(0, self.h - 1)
+
+        while len(self.particles) < self._count(6):
+            self.particles.append(self._spawn())
+
+    def _draw_soft_disk(self, canvas: np.ndarray, cx: float, cy: float,
+                        radius: int, r: int, g: int, b: int, base_alpha: float):
+        """Add one feathered disk to *canvas* (float RGBA accumulator).
+
+        Alpha falls from ``base_alpha`` at the centre to 0 at the edge with a
+        softness-controlled curve; colour is alpha-weighted so overlaps blend
+        smoothly.  Uses a max-union on alpha so stacked clouds don't blow out.
+        """
+        if radius < 1:
+            radius = 1
+        x0 = int(math.floor(cx - radius)); x1 = int(math.ceil(cx + radius)) + 1
+        y0 = int(math.floor(cy - radius)); y1 = int(math.ceil(cy + radius)) + 1
+        x0c, x1c = max(0, x0), min(self.w, x1)
+        y0c, y1c = max(0, y0), min(self.h, y1)
+        if x0c >= x1c or y0c >= y1c:
+            return
+        ys, xs = np.ogrid[y0c:y1c, x0c:x1c]
+        d = np.sqrt((xs - cx) ** 2 + (ys - cy) ** 2) / float(radius)
+        softness = float(np.clip(self.cfg.get('softness', 0.6), 0.0, 1.0))
+        # falloff: 1 at centre → 0 at edge; raise to a power so higher softness
+        # spreads the feather wider.
+        falloff = np.clip(1.0 - d, 0.0, 1.0) ** (1.0 + (1.0 - softness) * 2.0)
+        a = falloff * base_alpha           # 0..base_alpha
+        sub = canvas[y0c:y1c, x0c:x1c]
+        # max-union alpha; colour follows whichever contribution is strongest.
+        stronger = a > sub[:, :, 3]
+        sub[:, :, 0] = np.where(stronger, r, sub[:, :, 0])
+        sub[:, :, 1] = np.where(stronger, g, sub[:, :, 1])
+        sub[:, :, 2] = np.where(stronger, b, sub[:, :, 2])
+        sub[:, :, 3] = np.maximum(sub[:, :, 3], a)
+
+    def render(self) -> np.ndarray:
+        acc = np.zeros((self.h, self.w, 4), dtype=np.float32)
+        # Draw biggest first so smaller, brighter puffs win the max-union on top.
+        for p in sorted(self.particles, key=lambda q: -q.size):
+            self._draw_soft_disk(acc, p.x, p.y, p.size,
+                                 int(p.r), int(p.g), int(p.b), float(p.extra))
+        out = np.zeros((self.h, self.w, 4), dtype=np.uint8)
+        out[:, :, :3] = np.clip(acc[:, :, :3], 0, 255).astype(np.uint8)
+        out[:, :, 3] = np.clip(acc[:, :, 3] * 255.0, 0, 255).astype(np.uint8)
+        return out
+
+
 # ── Registry ──────────────────────────────────────────────────────────────────
 
 EFFECT_REGISTRY: dict[str, type] = {
@@ -481,6 +594,7 @@ EFFECT_REGISTRY: dict[str, type] = {
     'rings':     RingsEffect,
     'rain':      RainEffect,
     'fireflies': FirefliesEffect,
+    'clouds':    CloudsEffect,
 }
 
 
@@ -637,7 +751,11 @@ class ParticleSystem:
                      + out[:, :, :3].astype(np.float32) * dst_a * (1.0 - src_a)) / safe,
                     0, 65535
                 ).astype(np.uint16)
-                out[:, :, 3:4] = np.clip(out_a * 65535, 0, 65535).astype(np.uint16)
+                # Keep alpha on the same 0..255 scale the read above assumes
+                # (and that the final clip preserves), so soft/semi-transparent
+                # layers like clouds composite at their true opacity instead of
+                # saturating to fully opaque.
+                out[:, :, 3:4] = np.clip(out_a * 255.0, 0, 255).astype(np.uint16)
 
         if not has_content:
             return None

@@ -21,6 +21,7 @@ set_effect effect_id mapping (numeric IDs, matches ProtoTracer indices):
     4=snow,       5=confetti,  6=rings,     7=fireflies,
     8=fire,       9=aurora,    10=blizzard, 11=sonar,
     12=plasma,    13=celebration,  14=galaxy,   15=party
+    16=clouds   (Protoface-only extension; not a ProtoTracer index)
 
 set_effect with "layers" key accepts a full multi-layer config instead of
 a numeric ID — any structure accepted by ParticleSystem.set_effect() works.
@@ -60,6 +61,8 @@ _EFFECT_MAP: dict[int, str | dict] = {
     13: {'preset': 'celebration'},
     14: {'preset': 'galaxy'},
     15: {'preset': 'party'},
+    # Protoface-only extension (no ProtoTracer equivalent)
+    16: 'clouds',
 }
 
 _MATERIAL_COLOR_MAP = {

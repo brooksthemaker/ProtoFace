@@ -3,8 +3,9 @@ Pygame preview window for development on non-Pi hardware.
 
 Shows the LED panel output scaled up so individual pixels are visible.
 Keyboard shortcuts (when window is focused):
-  1-7        — switch particle effect  (1=sparkle 2=snow 3=embers 4=confetti
-                                        5=rings   6=rain  7=fireflies  0=none)
+  0-8        — switch particle effect  (1=sparkle 2=snow 3=embers 4=confetti
+                                        5=rings   6=rain  7=fireflies 8=clouds
+                                        0=none)
   q/e        — previous / next expression
   b          — trigger a manual blink
   ESC / Q    — quit
@@ -27,6 +28,7 @@ _EFFECT_KEYS = {
     pygame.K_5: 'rings',
     pygame.K_6: 'rain',
     pygame.K_7: 'fireflies',
+    pygame.K_8: 'clouds',
 } if _AVAILABLE else {}
 
 

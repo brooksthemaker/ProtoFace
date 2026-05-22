@@ -53,7 +53,7 @@ FACE_COLORS = [
     ("magenta", (255,   0, 150)),
     ("white",   (255, 255, 255)),
 ]
-EFFECTS = ["none", "sparkle", "embers", "confetti", "rain", "snow", "rings", "fireflies"]
+EFFECTS = ["none", "sparkle", "embers", "confetti", "rain", "snow", "rings", "fireflies", "clouds"]
 
 
 def load_config(path: str) -> dict:

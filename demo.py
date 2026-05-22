@@ -41,7 +41,7 @@ COLORS = [
     ("white",   (255, 255, 255)),
 ]
 
-EFFECTS = ["none", "sparkle", "embers", "confetti", "rain", "snow", "rings", "fireflies"]
+EFFECTS = ["none", "sparkle", "embers", "confetti", "rain", "snow", "rings", "fireflies", "clouds"]
 
 TEXT = "Demo"
 
