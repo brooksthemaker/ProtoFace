@@ -20,6 +20,7 @@ enum BtnAction {
   BTN_NEXT_COLOR, BTN_PREV_COLOR,
   BTN_NEXT_EFFECT, BTN_PREV_EFFECT,
   BTN_BRIGHT_UP, BTN_BRIGHT_DOWN,
+  BTN_RECENTER,   // re-zero the IMU head-tracking baseline
 };
 
 struct BtnCfg {

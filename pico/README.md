@@ -174,6 +174,27 @@ tearing is harmless for a monitor.
 
 Set `PREVIEW_ROTATION` (1 or 3 = landscape) and `PREVIEW_W/H` to match.
 
+## IMU / head tracking (BNO055)
+
+A **Bosch BNO055** 9-axis IMU can drive the face's movement from head motion.
+Set `IMU_ENABLE` in `config.h` and add **Adafruit BNO055** + **Adafruit Unified
+Sensor** + **Adafruit BusIO**.
+
+The BNO055 fuses accel/gyro/mag on-chip and outputs **absolute orientation**, so
+we read drift-free, gravity-referenced **roll/pitch** and map them to the face's
+pixel offset — the face leans/shifts as you move your head, on top of the idle
+wiggle. (To make it the *only* motion, zero the `wiggle` amplitudes in
+`config.h`.)
+
+- **Tuning:** `IMU_SENS_X/Y` (pixels per degree — flip a sign if motion is
+  mirrored), `IMU_MAX` (clamp), `IMU_DEADZONE` (ignore small tilt),
+  `IMU_SMOOTH` (EMA). If the two axes feel swapped, swap them in `Imu.cpp`.
+- **Recenter:** the neutral pose is captured at boot; press serial **`r`** (or a
+  `BTN_RECENTER` button) to re-zero after putting the helmet on.
+- **Wiring (I²C1):** SDA → GP26, SCL → GP27, VIN → 3.3 V, GND → GND,
+  ADR → GND for address 0x28 (or high for 0x29). Roll/pitch don't need
+  magnetometer calibration, so it's usable immediately.
+
 ## Default GPIO map
 
 To avoid collisions when enabling the optional features:
@@ -185,11 +206,13 @@ To avoid collisions when enabling the optional features:
 | GP16, GP17 | addressable-LED zones (default) |
 | GP18, GP19 | preview SPI (SCK, MOSI) — fixed |
 | GP20, GP21, GP22 | preview CS / DC / RST |
-| GP26 | light sensor (ADC0) |
-| GP27 | boop sensor |
+| GP26, GP27 | IMU I²C1 (SDA, SCL) |
+| GP28 | light sensor (ADC2) |
+| GP10 | boop sensor (free on 32-row; = HUB75 E on 64-row) |
 
-All assignments except HUB75 and the SPI clock/data are configurable in
-`config.h` / the per-module tables.
+All assignments except HUB75, the SPI clock/data, and the I²C pins are
+configurable in `config.h` / the per-module tables. On 64-row panels GP10 is the
+panel's E line — relocate the boop sensor (e.g. drop another feature) there.
 
 ## Build & flash
 
@@ -200,8 +223,9 @@ All assignments except HUB75 and the SPI clock/data are configurable in
      install "Raspberry Pi Pico/RP2040/RP2350".
    - Libraries (Library Manager): **Adafruit Protomatter** + **Adafruit GFX
      Library**. Add **Adafruit NeoPixel** if you set `ACCESSORY_ENABLE`
-     (cheek/accent LEDs), and **Adafruit ST7789** if you set `PREVIEW_ENABLE`
-     (in-helmet display).
+     (cheek/accent LEDs), **Adafruit ST7789** if you set `PREVIEW_ENABLE`
+     (in-helmet display), and **Adafruit BNO055** + **Adafruit Unified Sensor**
+     if you set `IMU_ENABLE` (head tracking).
 
 2. **Bake a face header** on your desktop (needs Pillow):
    ```bash
@@ -230,6 +254,7 @@ Single keys over the USB serial console:
 | `e` / `w` | next / previous expression |
 | `b` | manual blink |
 | `+` / `-` | brightness up / down |
+| `r` | recenter IMU head-tracking (if enabled) |
 
 Physical buttons can trigger the same actions — see **Physical inputs** below.
 
@@ -277,8 +302,8 @@ no config changes needed.
 | Boop sensor | ✅ digital sensor → triggerBoop |
 | Light sensor (ambient auto-brightness) | ✅ analog LDR (new; not in CM5) |
 | In-helmet preview (colour SPI TFT) | ✅ ST7789 on core 1 (new; not in CM5) |
+| IMU head-tracking → face movement | ✅ BNO055 (upgrade from CM5's MPU-6050) |
 | Mic-driven mouth + audio particles | ⬜ Phase 4 |
-| Gyro input | ⬜ Phase 4 |
 | Multi-layer particle stacks / presets | ⬜ Phase 2 |
 | Sub-pixel wiggle | ⬜ later (integer for now) |
 
@@ -306,6 +331,7 @@ pico/
     Particles.h/.cpp        additive particle effects
     Accessories.h/.cpp      WS2812 cheek/accent LED zones (face-synced)
     Inputs.h/.cpp           buttons + boop sensor + light sensor (auto-brightness)
+    Imu.h/.cpp              BNO055 head-tracking -> face movement (I2C1)
     Preview.h/.cpp          in-helmet colour SPI TFT mirror (runs on core 1)
     Controls.h              USB-serial key input
     assets/                 generated face headers go here (gitignored)

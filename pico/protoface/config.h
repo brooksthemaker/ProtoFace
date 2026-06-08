@@ -56,7 +56,7 @@
 
 // Boop sensor: a digital proximity/touch sensor that shows an expression briefly.
 #define BOOP_ENABLE 0
-#define BOOP_PIN 27              // GP18/19 are reserved for the preview SPI
+#define BOOP_PIN 10              // free on 32-row panels; GP10 = HUB75 E on 64-row
 #define BOOP_ACTIVE_LOW 1        // 1 = sensor pulls the pin to GND when booped
 #define BOOP_EXPRESSION 0        // expression index to show (order in the face)
 #define BOOP_DURATION 1.5f       // seconds to hold it
@@ -64,7 +64,7 @@
 // Light sensor: analog LDR/phototransistor for ambient auto-brightness. While
 // enabled it drives brightness automatically (manual +/- is overridden).
 #define LIGHT_ENABLE 0
-#define LIGHT_PIN 26             // ADC0 = GP26 (ADC pins: GP26/27/28)
+#define LIGHT_PIN 28             // ADC2 = GP28 (GP26/27 are the IMU I2C bus)
 #define LIGHT_RAW_DARK 80        // analogRead value in darkness (calibrate)
 #define LIGHT_RAW_BRIGHT 900     // analogRead value in bright light (calibrate)
 #define LIGHT_MIN_BRIGHT 24      // brightness floor (never fully off)
@@ -86,6 +86,21 @@
 #define PREVIEW_ROTATION 1       // 0..3; 1 or 3 = landscape for a 240x320 panel
 #define PREVIEW_SCALE 2          // face px -> preview px (128x32 -> 256x64)
 #define PREVIEW_FPS 12           // preview refresh cap, Hz (independent of face)
+
+// ── IMU / head tracking (BNO055) — drives face movement ─────────────────────
+// 9-axis absolute-orientation sensor on I2C1. Its gravity-referenced roll/pitch
+// (drift-free, no host fusion) shift the face, on top of the idle wiggle. Needs
+// Adafruit_BNO055 + Adafruit_Unified_Sensor + Adafruit_BusIO. Recenter (set the
+// current pose as neutral) with serial 'r' or a BTN_RECENTER button.
+#define IMU_ENABLE 0
+#define IMU_SDA 26               // I2C1 SDA
+#define IMU_SCL 27               // I2C1 SCL
+#define IMU_ADDR 0x28            // BNO055 default (0x29 if ADR pin high)
+#define IMU_SENS_X 0.20f         // pixels per degree, horizontal (flip sign to taste)
+#define IMU_SENS_Y 0.20f         // pixels per degree, vertical
+#define IMU_MAX 4.0f             // max face offset in pixels (clamp)
+#define IMU_DEADZONE 2.0f        // ignore tilt below this many degrees
+#define IMU_SMOOTH 0.2f          // EMA smoothing (0..1; lower = smoother/slower)
 
 // ── Active face ─────────────────────────────────────────────────────────────
 // Generate with: tools/convert_assets.py --name main --out assets/main.h ...

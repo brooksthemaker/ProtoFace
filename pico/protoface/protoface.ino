@@ -13,6 +13,7 @@
 #include "Controls.h"
 #include "FaceEngine.h"
 #include "FaceState.h"
+#include "Imu.h"
 #include "Inputs.h"
 #include "Material.h"
 #include "Particles.h"
@@ -44,6 +45,9 @@ static uint32_t prevMicros = 0;
 static Accessories accessories;
 #endif
 static Inputs inputs;
+#if IMU_ENABLE
+static Imu imu;
+#endif
 #if PREVIEW_ENABLE
 static Preview preview;
 #endif
@@ -71,6 +75,11 @@ static void doAction(BtnAction a, uint8_t param) {
     case BTN_BLINK: state->triggerBlink(); break;
     case BTN_BRIGHT_UP: state->brightness = min(255, state->brightness + 16); break;
     case BTN_BRIGHT_DOWN: state->brightness = max(16, state->brightness - 16); break;
+    case BTN_RECENTER:
+#if IMU_ENABLE
+      imu.recenter();
+#endif
+      break;
     default: break;
   }
 }
@@ -86,6 +95,7 @@ static void handleKey(char k) {
     case 'b': doAction(BTN_BLINK, 0); break;
     case '+': case '=': doAction(BTN_BRIGHT_UP, 0); break;
     case '-': case '_': doAction(BTN_BRIGHT_DOWN, 0); break;
+    case 'r': doAction(BTN_RECENTER, 0); break;
     default: break;
   }
 }
@@ -115,6 +125,9 @@ void setup() {
   accessories.begin();
 #endif
   inputs.begin();
+#if IMU_ENABLE
+  if (!imu.begin()) Serial.println("BNO055 not found — check I2C wiring/addr");
+#endif
 
   Serial.print("Protoface (Pico/C++) running: ");
   Serial.print(CANVAS_W); Serial.print("x"); Serial.print(CANVAS_H);
@@ -137,6 +150,10 @@ void loop() {
   uint8_t bparam = 0;
   BtnAction act = inputs.poll(*state, &bparam);
   if (act != BTN_NONE) doAction(act, bparam);
+
+#if IMU_ENABLE
+  imu.update(*state, dt);   // head tilt -> face offset (state.gyro_dx/dy)
+#endif
 
   state->update(dt);
   engine->render(canvas, *state, material);
