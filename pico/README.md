@@ -48,27 +48,80 @@ vertical stacking via Protomatter `tile` isn't wired up yet.)
 ### The two things the Pico can't do directly
 
 1. **Logic level.** Pico GPIO is **3.3 V**; HUB75 wants **5 V** logic on all 13
-   lines, so they must pass through a **3.3 V → 5 V level shifter**
-   (e.g. 74AHCT245).
+   lines, so they pass through **3.3 V → 5 V buffers** — this build uses
+   **SN74AHCT125N** quad buffers (see below).
 2. **Power.** The panel draws amps at 5 V (a 64×32 ~4 A, two ~8 A+ at full
    white) from an **external 5 V PSU — never the Pico**. The Pico is powered
    over USB/VSYS. **All grounds must be common** (PSU −, panel, shifter, Pico).
 
 ```
 [5V PSU] ─5V/GND─┬─────────────► panel power connector (heavy wire)
-                 └─► level-shifter Vcc + common GND
-[Pico GP0..GP13] ─3.3V─► [level shifter] ─5V─► [HUB75 ribbon] ─► panel IN
+                 └─► 74AHCT125 Vcc (5V) + common GND
+[Pico GP0..GP13] ─3.3V─► [4x SN74AHCT125N] ─5V─► [HUB75 ribbon] ─► panel IN
 [Pico USB] ── powers the Pico only          (tie all grounds together)
 ```
 
+### Level shifting with SN74AHCT125N
+
+The SN74AHCT125N is a **quad** non-inverting buffer (4 channels per chip) with
+**AHCT** (TTL-level) inputs — so a 3.3 V input is read as a valid logic-high
+while the chip runs at 5 V and outputs 5 V. HUB75 has **13 signals**, so you
+need **4 chips** (16 channels; 13 used, 3 spare).
+
+Per chip: tie **Vcc (pin 14) → 5 V**, **GND (pin 7) → GND**, a **0.1 µF**
+decoupling cap across Vcc/GND close to the chip, and **all four ŌE pins → GND**
+(active-low enable — grounding them keeps the buffers always on).
+
+DIP-14 pinout — each channel is `nŌE` (enable, →GND), `nA` (3.3 V in from Pico),
+`nY` (5 V out to panel):
+
+```
+        SN74AHCT125N (top view)
+        ┌───────────U───────────┐
+   1ŌE ─┤1                    14├─ Vcc (5V)
+    1A ─┤2  (1: ŌE,A,Y)       13├─ 4ŌE
+    1Y ─┤3                    12├─ 4A
+   2ŌE ─┤4                    11├─ 4Y
+    2A ─┤5  (2: ŌE,A,Y)       10├─ 3ŌE
+    2Y ─┤6                     9├─ 3A
+   GND ─┤7                     8├─ 3Y
+        └───────────────────────┘
+   tie 1ŌE,2ŌE,3ŌE,4ŌE → GND ;  Vcc → 5V ;  0.1µF Vcc–GND
+```
+
+Channel allocation (Pico `A` input → buffer → HUB75 `Y` output):
+
+| Chip | Ch | Pico in (A) | HUB75 out (Y) |
+|---|---|---|---|
+| U1 | 1 | GP0 | R1 |
+| U1 | 2 | GP1 | G1 |
+| U1 | 3 | GP2 | B1 |
+| U1 | 4 | GP3 | R2 |
+| U2 | 1 | GP4 | G2 |
+| U2 | 2 | GP5 | B2 |
+| U2 | 3 | GP6 | A |
+| U2 | 4 | GP7 | B |
+| U3 | 1 | GP8 | C |
+| U3 | 2 | GP9 | D |
+| U3 | 3 | GP11 | CLK |
+| U3 | 4 | GP12 | LAT |
+| U4 | 1 | GP13 | OE |
+| U4 | 2–4 | — | spare (e.g. GP10/E for 64-row, WS2812 data) |
+
+> Keep the 3.3 V input wires and the 5 V output wires short; put the chips close
+> to the HUB75 connector. The ST7789 TFT (3.3 V logic), BNO055 (3.3 V I²C), the
+> analog mic, and the buttons/boop/light **don't** need shifting — only the
+> HUB75 lines do. WS2812 cheek data ideally wants 5 V logic too; run it through a
+> spare '125 channel (a U4 channel above).
+
 ### Two ways to build it
 
-- **Pimoroni Interstate 75 W (recommended, turnkey):** an RP2350 board with the
-  **HUB75 socket, level shifters, and 5 V screw terminal on board**. The default
-  pins in `config.h` *are* its mapping — plug in the ribbon + 5 V and flash.
-- **Bare Pico 2 + adapter:** wire the 13 GPIO through a level-shifter board to a
-  HUB75 connector, plus external 5 V and common ground. Change `config.h` pins
-  only if you route them differently than the table above.
+- **Pimoroni Interstate 75 W (turnkey alternative):** an RP2350 board with the
+  **HUB75 socket, level shifters, and 5 V screw terminal on board** — no '125s
+  needed. The default pins in `config.h` *are* its mapping.
+- **Bare Pico 2 + 4× SN74AHCT125N (this setup):** wire the 13 GPIO through the
+  buffers per the table above to a HUB75 connector, plus external 5 V and common
+  ground. Change `config.h` pins only if you route them differently.
 
 > The Adafruit Triple Matrix Bonnet in the repo-root `HARDWARE.md` is a 40-pin
 > HAT for the **CM5/Pi** — it does **not** fit a Pico. Use one of the paths
@@ -106,10 +159,9 @@ NeoPixel** library (only when enabled).
 
 **Wiring per zone:** pick a **free GPIO** (GP0–GP13 are taken by HUB75 — use
 GP16+); add a ~330 Ω series resistor on the data line and a ~1000 µF cap across
-the zone's 5 V/GND. WS2812 wants ~5 V data logic, so a **3.3 V → 5 V level
-shifter on the data line is recommended** (short runs sometimes work at 3.3 V
-but aren't reliable). Power LEDs from the **5 V PSU** (~60 mA/LED worst case),
-common ground with the Pico.
+the zone's 5 V/GND. WS2812 wants ~5 V data logic, so run the data line through a
+**spare SN74AHCT125 channel** (e.g. a U4 channel) like the HUB75 lines. Power
+LEDs from the **5 V PSU** (~60 mA/LED worst case), common ground with the Pico.
 
 ## Physical inputs (buttons / boop / light)
 
