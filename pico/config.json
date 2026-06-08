@@ -1,0 +1,22 @@
+{
+  "panel": {
+    "panel_width": 64,
+    "panel_height": 32,
+    "chain_length": 2,
+    "bit_depth": 4
+  },
+  "display": {
+    "fps": 30,
+    "background": [0, 0, 0],
+    "brightness": 200
+  },
+  "face": {
+    "active": "main",
+    "expression_fade": 0.3,
+    "blink": {"duration": 0.15, "interval_min": 3.0, "interval_max": 7.0},
+    "wiggle": {"speed": 0.3, "amplitude_x": 2.0, "amplitude_y": 1.0},
+    "mirror": true
+  },
+  "material": {"active": "teal"},
+  "particles": {"active": "none"}
+}
