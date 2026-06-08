@@ -1,95 +1,79 @@
-# Protoface for Pico 2 / Pico 2 W (CircuitPython)
+# Protoface for Pico 2 / Pico 2 W (Arduino / C++)
 
 A standalone port of Protoface to the **Raspberry Pi Pico 2 / Pico 2 W**
-(RP2350) running **CircuitPython**. It drives a HUB75 LED face directly from the
-microcontroller — no Linux, no CM5, no ProtoHUD host required.
+(RP2350), written in **C++** on the Arduino framework and driving HUB75 panels
+through **Adafruit_Protomatter**. It runs a full LED face directly on the
+microcontroller — no Linux, no CM5, no ProtoHUD host.
 
-> This is a *separate platform target* living alongside the CM5 build. The CM5
-> code (repo root) is unchanged. This folder is self-contained and gets copied
-> to the board's CIRCUITPY drive.
+> Separate platform target, living alongside the CM5 build. The CM5 code (repo
+> root) is unchanged. C++ was chosen for guaranteed full feature parity: the
+> per-pixel compositing (crossfades, additive multi-layer particles) that would
+> fight the frame rate in an interpreted runtime is cheap in compiled code.
 
 ## How this differs from the CM5 build
 
-The CM5 Protoface is a CPython daemon built on `numpy` + `Pillow` + `pygame`,
-talking to ProtoHUD over a Unix socket and shared memory, driving panels via
-Piomatter (RP1-specific). None of that exists on a microcontroller, so each
-layer is re-homed onto CircuitPython:
-
 | Subsystem | CM5 | Pico 2 (this port) |
 |---|---|---|
-| Runtime | CPython 3 / Debian | CircuitPython 9+ on RP2350 |
-| HUB75 driver | Piomatter (RP1 PIO) | `rgbmatrix` + `framebufferio` (Protomatter, PIO+DMA) |
-| Compositing | numpy | `displayio` + `bitmaptools` |
-| Face art | Pillow loads PNG | pre-baked 8-bit indexed **BMP** |
-| Material tint | per-pixel luminance × colour | **palette ramp** (a ~16-entry rewrite) |
-| Crossfade/blink | numpy lerp | index lerp over a bounded region |
-| GIF | Pillow | `gifio.OnDiskGif` *(Phase 3)* |
-| Mic / gyro | PyAudio / smbus | `audiobusio` + `ulab.fft` / `adafruit_mpu6050` *(Phase 4)* |
-| Control | Unix socket IPC + terminal | USB-serial keys (+ buttons) — standalone |
+| Runtime | CPython 3 / Debian | Arduino C++ (arduino-pico core) on RP2350 |
+| HUB75 driver | Piomatter (RP1 PIO) | Adafruit_Protomatter (RP2350 PIO+DMA) |
+| Compositing | numpy | hand-written C over an RGB888 canvas |
+| Face art | Pillow loads PNG | baked into a C header (luminance + alpha arrays) |
+| Material tint | per-pixel luminance × colour | same, in the tint stage |
+| Config | YAML | compile-time `config.h` |
+| Control | Unix socket IPC + terminal | USB-serial keys — standalone |
 
 ## Hardware
 
 **Recommended board: Pimoroni Interstate 75 W** — an RP2350 (Pico 2 W-class)
-board purpose-built to drive HUB75 panels, with the pin mapping this port
-defaults to. A bare **Pico 2** wired to a HUB75 panel through level shifters /
-an Adafruit RGB-Matrix-style adapter also works; override the pins in
-`config.json`.
+board purpose-built for HUB75, whose pinout this port defaults to. A bare
+**Pico 2** wired to a panel through level shifters / a matrix bonnet also works;
+change the pins in `config.h`.
 
-Default pin mapping (Interstate 75 / `panel.pins` in `config.json` to change):
+Default pins (`config.h`):
 
 | Signal | Pins |
 |---|---|
-| RGB | R0 G0 B0 R1 G1 B1 (GP0–GP5) |
-| Address | A B C D (GP6–GP9); add E (GP10) for 64-row panels |
-| Clock / Latch / OE | CLK GP11 / LAT GP12 / OE GP13 |
+| RGB | GP0–GP5 (R0 G0 B0 R1 G1 B1) |
+| Address | GP6–GP9 (A B C D); add GP10 (E) for 64-row panels |
+| Clock / Latch / OE | GP11 / GP12 / GP13 |
 
-Panel layout matches the CM5 build: **2× 64×32 chained = a 128×32 canvas**, with
-the right half mirroring the left (`face.mirror: true`). Power the panels from a
-proper external 5 V supply — see the repo-root `HARDWARE.md` for current/PSU
-guidance (the panel side is identical).
+Panel layout matches the CM5 build: **2× 64×32 chained = 128×32**, right half
+mirroring the left (`FACE_MIRROR`). Power the panels from a proper external 5 V
+supply — see the repo-root `HARDWARE.md` (the panel side is identical).
 
-> 520 KB SRAM is the real constraint, not the panel. Keep the canvas, particle
-> counts, and number of loaded faces modest.
+> 520 KB SRAM is the real ceiling, not compute. Buffers here are modest
+> (RGB888 canvas 12 KB + RGB565 8 KB + face work ~4 KB); face art lives in
+> flash.
 
-## Install
+## Build & flash
 
-1. **Flash CircuitPython** (9.x+) for your board from
-   <https://circuitpython.org/downloads>. Confirm the natives exist:
-   ```python
-   import rgbmatrix, gifio          # at the REPL
-   from ulab import numpy as np
-   ```
-   If any are missing, flash a full build for your board.
+1. **Install the toolchain**
+   - Arduino IDE (or arduino-cli) with the **arduino-pico** core (Earle
+     Philhower): add the board manager URL
+     `https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json`,
+     install "Raspberry Pi Pico/RP2040/RP2350".
+   - Libraries (Library Manager): **Adafruit Protomatter** + **Adafruit GFX
+     Library**.
 
-2. **Copy libraries** into `CIRCUITPY/lib/` — see `lib-requirements.txt`. For
-   Phase 1 you only need `adafruit_imageload`.
-
-3. **Bake face assets** on your desktop (needs Pillow):
+2. **Bake a face header** on your desktop (needs Pillow):
    ```bash
    pip install Pillow
    # generate the CM5 placeholder PNGs first if faces/main has none:
    python generate_assets.py
-   python pico/tools/convert_assets.py --src faces/main --out pico/assets/main \
-       --width 64 --height 32
+   python pico/tools/convert_assets.py --src faces/main --name main \
+       --out pico/protoface/assets/main.h --width 64 --height 32
    ```
-   `--width/--height` is the *authored* face size (half the canvas with mirror
-   on). The converter writes indexed BMPs + a device `config.json`.
+   `--width/--height` is the authored face size (half the canvas with mirror
+   on). This writes `protoface/assets/main.h`, which `config.h` includes. (The
+   sketch won't compile without it — you'll get a clear `#error` telling you to
+   bake it.)
 
-4. **Copy this folder's contents to the CIRCUITPY root** so the drive has:
-   ```
-   CIRCUITPY/
-     code.py
-     config.json
-     protoface_pico/        (the engine package)
-     assets/main/           (baked BMPs + config.json)
-     lib/                   (adafruit_imageload, …)
-   ```
-   CircuitPython runs `code.py` on boot.
+3. **Open & flash** `pico/protoface/protoface.ino`. Select board "Raspberry Pi
+   Pico 2" (or "Pico 2 W"), then Upload. Open Serial Monitor at 115200.
 
 ## Controls (standalone)
 
-Single keys over the USB serial console (e.g. `screen`, `tio`, the Mu/Thonny
-REPL, or `ampy`'s console):
+Single keys over the USB serial console:
 
 | Key | Action |
 |---|---|
@@ -99,13 +83,11 @@ REPL, or `ampy`'s console):
 | `b` | manual blink |
 | `+` / `-` | brightness up / down |
 
-Physical buttons (Interstate 75 A/B) can be mapped via `keypad` later.
-
 ## Configuration
 
-Edit `config.json` (schema mirrors the CM5 `config.yaml`, single-panel subset).
-Defaults live in `protoface_pico/config.py`. Named colours: `teal red orange
-yellow green blue purple magenta white`, or `[r,g,b]`, or `"solid:r,g,b"`.
+Edit `protoface/config.h` (compile-time) for pins, panel geometry, bit depth,
+target FPS, default colour/effect/brightness, and the active face. Named
+colours live in `Material.h`.
 
 ## Feature parity status
 
@@ -114,37 +96,41 @@ yellow green blue purple magenta white`, or `[r,g,b]`, or `"solid:r,g,b"`.
 | HUB75 output (Protomatter) | ✅ Phase 1 |
 | Expressions + crossfade | ✅ Phase 1 |
 | Blink (eye regions / whole-face) | ✅ Phase 1 |
-| Mouth-open region | ✅ Phase 1 (driven by mic in Phase 4) |
+| Mouth-open region | ✅ Phase 1 (mic-driven in Phase 4) |
 | Idle wiggle + gyro offset | ✅ Phase 1 (integer; gyro feeds in Phase 4) |
 | Material colour tint + brightness | ✅ Phase 1 (solid) |
 | Mirror layout | ✅ Phase 1 |
-| Particles | ⚠️ Phase 2 — single-layer subset, opaque blend |
+| Particles (additive, multi-effect) | ✅ Phase 1 (single-layer; multi-layer in Phase 2) |
 | Scrolling/tiled materials | ⬜ Phase 2 |
-| GIF playback | ⬜ Phase 3 (`gifio`) |
+| GIF playback | ⬜ Phase 3 |
 | Mic-driven mouth + audio particles | ⬜ Phase 4 |
 | Gyro input | ⬜ Phase 4 |
 | Boop sensor + buttons | ⬜ Phase 4 |
-| Additive particle blending / presets | ⬜ later |
+| Multi-layer particle stacks / presets | ⬜ Phase 2 |
+| Sub-pixel wiggle | ⬜ later (integer for now) |
 
-## Performance note
+## Status
 
-The panel refresh is handled by PIO+DMA (free CPU). The limiter is per-frame
-compositing in CircuitPython. Palette-tinted faces, blink, mouth, wiggle and
-crossfades are cheap; heavy multi-layer particles are the risk. The engine
-targets 30 fps and degrades gracefully (drop the FPS or particle counts in
-`config.json` if needed). **Real frame numbers can only be confirmed on
-hardware** — none of this has been run on a physical board yet.
+⚠️ **Not yet run on physical hardware** — no Pico 2 / panel was available. The
+engine, state machine and particle system are compiled and exercised off-device
+(host g++ with an Arduino stub: composition, crossfade, blink, mouth, mirror,
+and additive particles all run), but Protomatter init and on-panel output, plus
+real frame timing, need verifying on a board.
 
 ## Layout
 
 ```
 pico/
-  code.py                  entry point (runs on CIRCUITPY boot)
-  config.json              device config (copy/edit)
-  lib-requirements.txt     CircuitPython libs to install
-  tools/convert_assets.py  host-side PNG -> indexed BMP baker (needs Pillow)
-  assets/                  baked face folders go here (gitignored output)
-  protoface_pico/
-    config.py     matrix.py     material.py
-    state.py      face.py       particles.py     controls.py
+  README.md
+  tools/convert_assets.py   host-side PNG -> C header baker (needs Pillow)
+  protoface/                Arduino sketch (open protoface.ino)
+    protoface.ino           setup/loop, Protomatter, canvas -> panel
+    config.h                compile-time config (pins, geometry, defaults, face)
+    face_asset.h            baked-face data format
+    FaceState.h/.cpp        expression/blink/mouth/wiggle/boop logic (CM5 port)
+    FaceEngine.h/.cpp       compose + tint + mirror -> RGB888 canvas
+    Material.h              solid colour + named palette
+    Particles.h/.cpp        additive particle effects
+    Controls.h              USB-serial key input
+    assets/                 generated face headers go here (gitignored)
 ```
