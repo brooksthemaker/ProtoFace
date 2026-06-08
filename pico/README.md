@@ -111,6 +111,42 @@ shifter on the data line is recommended** (short runs sometimes work at 3.3 V
 but aren't reliable). Power LEDs from the **5 V PSU** (~60 mA/LED worst case),
 common ground with the Pico.
 
+## Physical inputs (buttons / boop / light)
+
+All optional and independently gated in `config.h`; they use core Arduino only
+(no extra libraries). Use GPIO that HUB75 doesn't (GP0–GP13 are the panel).
+
+**Buttons** — set `BUTTONS_ENABLE` and edit the table at the top of
+`Inputs.cpp`. Each entry is `{ pin, action, param, active_low }`; debounced,
+fires on press. Default = two buttons cycling expressions:
+
+```cpp
+static BtnCfg BUTTONS[] = {
+    {14, BTN_NEXT_EXPR, 0, true},   // next emote
+    {15, BTN_PREV_EXPR, 0, true},   // previous emote
+};
+```
+Actions: `BTN_NEXT_EXPR` / `BTN_PREV_EXPR`, `BTN_SET_EXPR` (jump to expression
+`param`), `BTN_BLINK`, `BTN_NEXT_COLOR`/`BTN_PREV_COLOR`,
+`BTN_NEXT_EFFECT`/`BTN_PREV_EFFECT`, `BTN_BRIGHT_UP`/`BTN_BRIGHT_DOWN`. Buttons
+and the serial keys run the same handler. **Wiring:** button between the GPIO
+and **GND** (`active_low: true` uses the internal pull-up — no resistor needed).
+
+**Boop sensor** — set `BOOP_ENABLE` + `BOOP_PIN`. A digital proximity/touch
+sensor (IR like a TCRT5000, or a capacitive TTP223) drives the existing
+`FaceState::triggerBoop()`: when booped it shows expression `BOOP_EXPRESSION`
+for `BOOP_DURATION` seconds, then reverts. `BOOP_ACTIVE_LOW` matches sensors
+that pull the pin to GND. **Wiring:** sensor out → the GPIO, sensor power/GND
+common with the Pico.
+
+**Light sensor (auto-brightness)** — set `LIGHT_ENABLE` + `LIGHT_PIN` (an **ADC
+pin: GP26/27/28**). An LDR or phototransistor in a divider feeds the ADC; the
+face (and accent LEDs) auto-dim to ambient light, overriding manual brightness
+while enabled. **Calibrate** `LIGHT_RAW_DARK`/`LIGHT_RAW_BRIGHT` to your
+`analogRead` values in dark/bright, and set the `LIGHT_MIN/MAX_BRIGHT` range;
+`LIGHT_SMOOTH` controls how fast it reacts. **Wiring:** LDR from 3.3 V to the
+ADC pin, a fixed resistor (~10 kΩ) from the ADC pin to GND (classic divider).
+
 ## Build & flash
 
 1. **Install the toolchain**
@@ -149,6 +185,8 @@ Single keys over the USB serial console:
 | `e` / `w` | next / previous expression |
 | `b` | manual blink |
 | `+` / `-` | brightness up / down |
+
+Physical buttons can trigger the same actions — see **Physical inputs** below.
 
 ## Configuration
 
@@ -190,9 +228,11 @@ no config changes needed.
 | Particles (additive, multi-effect) | ✅ Phase 1 (single-layer; multi-layer in Phase 2) |
 | Scrolling/tiled materials | ⬜ Phase 2 |
 | GIF playback | ⬜ Phase 3 |
+| Buttons (cycle expression/colour/effect/etc.) | ✅ debounced, config-driven |
+| Boop sensor | ✅ digital sensor → triggerBoop |
+| Light sensor (ambient auto-brightness) | ✅ analog LDR (new; not in CM5) |
 | Mic-driven mouth + audio particles | ⬜ Phase 4 |
 | Gyro input | ⬜ Phase 4 |
-| Boop sensor + buttons | ⬜ Phase 4 |
 | Multi-layer particle stacks / presets | ⬜ Phase 2 |
 | Sub-pixel wiggle | ⬜ later (integer for now) |
 
@@ -219,6 +259,7 @@ pico/
     Material.h              solid colour + named palette
     Particles.h/.cpp        additive particle effects
     Accessories.h/.cpp      WS2812 cheek/accent LED zones (face-synced)
+    Inputs.h/.cpp           buttons + boop sensor + light sensor (auto-brightness)
     Controls.h              USB-serial key input
     assets/                 generated face headers go here (gitignored)
 ```

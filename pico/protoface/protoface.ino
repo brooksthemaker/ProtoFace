@@ -13,6 +13,7 @@
 #include "Controls.h"
 #include "FaceEngine.h"
 #include "FaceState.h"
+#include "Inputs.h"
 #include "Material.h"
 #include "Particles.h"
 
@@ -41,28 +42,46 @@ static uint32_t prevMicros = 0;
 #if ACCESSORY_ENABLE
 static Accessories accessories;
 #endif
+static Inputs inputs;
 
 static inline uint16_t to565(uint8_t r, uint8_t g, uint8_t b) {
   return ((uint16_t)(r & 0xF8) << 8) | ((uint16_t)(g & 0xFC) << 3) | (b >> 3);
 }
 
+// Shared action handler — both serial keys and physical buttons route here.
+static void doAction(BtnAction a, uint8_t param) {
+  switch (a) {
+    case BTN_NEXT_COLOR: colorIdx = (colorIdx + 1) % NUM_MATERIAL_COLORS;
+      material = materialByIndex(colorIdx); break;
+    case BTN_PREV_COLOR: colorIdx = (colorIdx + NUM_MATERIAL_COLORS - 1) % NUM_MATERIAL_COLORS;
+      material = materialByIndex(colorIdx); break;
+    case BTN_NEXT_EFFECT:
+      particles->setEffect((particles->effect() + 1) % Particles::numEffects());
+      Serial.print("effect: "); Serial.println(Particles::effectName(particles->effect())); break;
+    case BTN_PREV_EFFECT:
+      particles->setEffect((particles->effect() + Particles::numEffects() - 1) % Particles::numEffects());
+      Serial.print("effect: "); Serial.println(Particles::effectName(particles->effect())); break;
+    case BTN_NEXT_EXPR: state->nextExpression(); break;
+    case BTN_PREV_EXPR: state->prevExpression(); break;
+    case BTN_SET_EXPR: state->setExpression(param); break;
+    case BTN_BLINK: state->triggerBlink(); break;
+    case BTN_BRIGHT_UP: state->brightness = min(255, state->brightness + 16); break;
+    case BTN_BRIGHT_DOWN: state->brightness = max(16, state->brightness - 16); break;
+    default: break;
+  }
+}
+
 static void handleKey(char k) {
   switch (k) {
-    case 'c': colorIdx = (colorIdx + 1) % NUM_MATERIAL_COLORS;
-              material = materialByIndex(colorIdx); break;
-    case 'v': colorIdx = (colorIdx + NUM_MATERIAL_COLORS - 1) % NUM_MATERIAL_COLORS;
-              material = materialByIndex(colorIdx); break;
-    case 'x': particles->setEffect((particles->effect() + 1) % Particles::numEffects());
-              Serial.print("effect: "); Serial.println(Particles::effectName(particles->effect())); break;
-    case 'z': particles->setEffect((particles->effect() + Particles::numEffects() - 1) % Particles::numEffects());
-              Serial.print("effect: "); Serial.println(Particles::effectName(particles->effect())); break;
-    case 'e': state->nextExpression(); break;
-    case 'w': state->prevExpression(); break;
-    case 'b': state->triggerBlink(); break;
-    case '+': case '=':
-      state->brightness = min(255, state->brightness + 16); break;
-    case '-': case '_':
-      state->brightness = max(16, state->brightness - 16); break;
+    case 'c': doAction(BTN_NEXT_COLOR, 0); break;
+    case 'v': doAction(BTN_PREV_COLOR, 0); break;
+    case 'x': doAction(BTN_NEXT_EFFECT, 0); break;
+    case 'z': doAction(BTN_PREV_EFFECT, 0); break;
+    case 'e': doAction(BTN_NEXT_EXPR, 0); break;
+    case 'w': doAction(BTN_PREV_EXPR, 0); break;
+    case 'b': doAction(BTN_BLINK, 0); break;
+    case '+': case '=': doAction(BTN_BRIGHT_UP, 0); break;
+    case '-': case '_': doAction(BTN_BRIGHT_DOWN, 0); break;
     default: break;
   }
 }
@@ -91,6 +110,7 @@ void setup() {
 #if ACCESSORY_ENABLE
   accessories.begin();
 #endif
+  inputs.begin();
 
   Serial.print("Protoface (Pico/C++) running: ");
   Serial.print(CANVAS_W); Serial.print("x"); Serial.print(CANVAS_H);
@@ -108,6 +128,11 @@ void loop() {
 
   char k = pollKey();
   if (k) handleKey(k);
+
+  // Physical inputs: applies boop + light to state, returns a button action.
+  uint8_t bparam = 0;
+  BtnAction act = inputs.poll(*state, &bparam);
+  if (act != BTN_NONE) doAction(act, bparam);
 
   state->update(dt);
   engine->render(canvas, *state, material);

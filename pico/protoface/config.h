@@ -47,6 +47,30 @@
 // modes). Needs the Adafruit NeoPixel library. 0 = disabled (no dependency).
 #define ACCESSORY_ENABLE 0
 
+// ── Inputs: buttons / boop / light sensor ───────────────────────────────────
+// Each independently optional; all use core Arduino only (no extra libraries).
+// Pick GPIO that HUB75 doesn't use (GP0-GP13 are the panel).
+
+// Buttons cycle expressions/colour/effect/etc. Edit the table in Inputs.cpp.
+#define BUTTONS_ENABLE 0
+
+// Boop sensor: a digital proximity/touch sensor that shows an expression briefly.
+#define BOOP_ENABLE 0
+#define BOOP_PIN 18
+#define BOOP_ACTIVE_LOW 1        // 1 = sensor pulls the pin to GND when booped
+#define BOOP_EXPRESSION 0        // expression index to show (order in the face)
+#define BOOP_DURATION 1.5f       // seconds to hold it
+
+// Light sensor: analog LDR/phototransistor for ambient auto-brightness. While
+// enabled it drives brightness automatically (manual +/- is overridden).
+#define LIGHT_ENABLE 0
+#define LIGHT_PIN 26             // ADC0 = GP26 (ADC pins: GP26/27/28)
+#define LIGHT_RAW_DARK 80        // analogRead value in darkness (calibrate)
+#define LIGHT_RAW_BRIGHT 900     // analogRead value in bright light (calibrate)
+#define LIGHT_MIN_BRIGHT 24      // brightness floor (never fully off)
+#define LIGHT_MAX_BRIGHT 255     // brightness ceiling
+#define LIGHT_SMOOTH 0.1f        // EMA smoothing per frame (0..1; lower = slower)
+
 // ── Active face ─────────────────────────────────────────────────────────────
 // Generate with: tools/convert_assets.py --name main --out assets/main.h ...
 #if __has_include("assets/main.h")
