@@ -102,6 +102,19 @@
 #define IMU_DEADZONE 2.0f        // ignore tilt below this many degrees
 #define IMU_SMOOTH 0.2f          // EMA smoothing (0..1; lower = smoother/slower)
 
+// ── Microphone (analog) — drives the mouth + audio-reactive effects ─────────
+// An analog mic module (e.g. MAX9814 with AGC) on an ADC pin. Its envelope sets
+// mouth_open and the audio level feeds ACC_AUDIO cheeks + particle density.
+// ADC pins are GP26/27/28: GP26/27 are the IMU bus, so with the IMU enabled the
+// mic and the light sensor must share GP28 — pick one. (IMU off frees 26/27.)
+#define MIC_ENABLE 0
+#define MIC_PIN 28               // ADC pin (see note above)
+#define MIC_SAMPLES 256          // ADC samples per frame for the envelope
+#define MIC_SENSITIVITY 0.5f     // 0..1 (higher = mouth opens more easily)
+#define MIC_NOISE_FLOOR 0.04f    // ignore envelope below this (0..1)
+#define MIC_ATTACK 0.6f          // smoothing when opening (0..1; higher = snappier)
+#define MIC_DECAY 0.2f           // smoothing when closing
+
 // ── Active face ─────────────────────────────────────────────────────────────
 // Generate with: tools/convert_assets.py --name main --out assets/main.h ...
 #if __has_include("assets/main.h")

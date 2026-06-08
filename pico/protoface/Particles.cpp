@@ -79,10 +79,12 @@ void Particles::update(float dt) {
   if (effect_ == 0) return;
   const EffectDef &e = EFFECTS[effect_];
 
-  // Maintain population.
+  // Maintain population (scaled by the audio-reactive intensity).
+  int target = (int)(count_ * intensity_ + 0.5f);
+  if (target > MAX_PARTICLES) target = MAX_PARTICLES;
   uint8_t alive = 0;
   for (uint8_t i = 0; i < MAX_PARTICLES; i++) if (p_[i].alive) alive++;
-  while (alive < count_) { spawn(); alive++; }
+  while (alive < target) { spawn(); alive++; }
 
   for (uint8_t i = 0; i < MAX_PARTICLES; i++) {
     Particle &q = p_[i];

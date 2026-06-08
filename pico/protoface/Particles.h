@@ -21,6 +21,8 @@ class Particles {
 
   void setEffect(uint8_t idx);
   uint8_t effect() const { return effect_; }
+  // Scale particle density 0..1+ (e.g. from the mic level) for audio reactivity.
+  void setIntensity(float i) { intensity_ = i < 0 ? 0 : i; }
   static const char *effectName(uint8_t idx);
   static uint8_t numEffects();
 
@@ -35,4 +37,5 @@ class Particles {
   uint8_t effect_ = 0;
   Particle p_[MAX_PARTICLES];
   uint8_t count_ = 0;        // target population for the current effect
+  float intensity_ = 1.0f;   // density multiplier (audio-reactive)
 };

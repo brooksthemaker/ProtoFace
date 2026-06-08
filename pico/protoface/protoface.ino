@@ -16,6 +16,7 @@
 #include "Imu.h"
 #include "Inputs.h"
 #include "Material.h"
+#include "Mic.h"
 #include "Particles.h"
 #include "Preview.h"
 
@@ -47,6 +48,9 @@ static Accessories accessories;
 static Inputs inputs;
 #if IMU_ENABLE
 static Imu imu;
+#endif
+#if MIC_ENABLE
+static Mic mic;
 #endif
 #if PREVIEW_ENABLE
 static Preview preview;
@@ -128,6 +132,9 @@ void setup() {
 #if IMU_ENABLE
   if (!imu.begin()) Serial.println("BNO055 not found — check I2C wiring/addr");
 #endif
+#if MIC_ENABLE
+  mic.begin();
+#endif
 
   Serial.print("Protoface (Pico/C++) running: ");
   Serial.print(CANVAS_W); Serial.print("x"); Serial.print(CANVAS_H);
@@ -153,6 +160,10 @@ void loop() {
 
 #if IMU_ENABLE
   imu.update(*state, dt);   // head tilt -> face offset (state.gyro_dx/dy)
+#endif
+#if MIC_ENABLE
+  mic.update(*state, dt);              // audio envelope -> state.mouth_open
+  particles->setIntensity(0.25f + 0.75f * mic.level());  // audio-reactive density
 #endif
 
   state->update(dt);

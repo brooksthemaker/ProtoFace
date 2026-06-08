@@ -195,6 +195,24 @@ wiggle. (To make it the *only* motion, zero the `wiggle` amplitudes in
   ADR → GND for address 0x28 (or high for 0x29). Roll/pitch don't need
   magnetometer calibration, so it's usable immediately.
 
+## Microphone → mouth + audio-reactive effects
+
+An analog mic module (e.g. **MAX9814** with AGC) on an ADC pin drives the mouth.
+Set `MIC_ENABLE` in `config.h`; no extra library needed. Each frame it samples
+the ADC, measures the audio envelope, and maps it to `mouth_open` with a noise
+gate and asymmetric attack/decay (opens fast, closes slower — natural mouth).
+
+The audio `level()` also feeds the reactive bits: **`ACC_AUDIO` cheeks** brighten
+with your voice, and **particle density** scales with volume.
+
+- **Tuning:** `MIC_SENSITIVITY`, `MIC_NOISE_FLOOR` (gate), `MIC_ATTACK`/
+  `MIC_DECAY` (smoothing), `MIC_SAMPLES` (envelope window).
+- **Wiring:** mic module OUT → the ADC pin, VCC → 3.3 V, GND → GND.
+- **Pin note:** ADC pins are GP26/27/28. With the IMU on (GP26/27 = its I²C),
+  the **mic and light sensor both want GP28 — enable one**. With the IMU off,
+  move one of them to GP26/27. (An I²S MEMS mic would avoid the ADC entirely but
+  needs 3 digital pins — a worse trade on a full build.)
+
 ## Default GPIO map
 
 To avoid collisions when enabling the optional features:
@@ -207,7 +225,7 @@ To avoid collisions when enabling the optional features:
 | GP18, GP19 | preview SPI (SCK, MOSI) — fixed |
 | GP20, GP21, GP22 | preview CS / DC / RST |
 | GP26, GP27 | IMU I²C1 (SDA, SCL) |
-| GP28 | light sensor (ADC2) |
+| GP28 | light sensor *or* analog mic (ADC2 — pick one when IMU is on) |
 | GP10 | boop sensor (free on 32-row; = HUB75 E on 64-row) |
 
 All assignments except HUB75, the SPI clock/data, and the I²C pins are
@@ -303,7 +321,8 @@ no config changes needed.
 | Light sensor (ambient auto-brightness) | ✅ analog LDR (new; not in CM5) |
 | In-helmet preview (colour SPI TFT) | ✅ ST7789 on core 1 (new; not in CM5) |
 | IMU head-tracking → face movement | ✅ BNO055 (upgrade from CM5's MPU-6050) |
-| Mic-driven mouth + audio particles | ⬜ Phase 4 |
+| Mic-driven mouth | ✅ analog envelope → mouth_open |
+| Audio-reactive cheeks + particles | ✅ ACC_AUDIO cheeks + particle density |
 | Multi-layer particle stacks / presets | ⬜ Phase 2 |
 | Sub-pixel wiggle | ⬜ later (integer for now) |
 
@@ -332,6 +351,7 @@ pico/
     Accessories.h/.cpp      WS2812 cheek/accent LED zones (face-synced)
     Inputs.h/.cpp           buttons + boop sensor + light sensor (auto-brightness)
     Imu.h/.cpp              BNO055 head-tracking -> face movement (I2C1)
+    Mic.h/.cpp              analog mic -> mouth_open + audio-reactive level
     Preview.h/.cpp          in-helmet colour SPI TFT mirror (runs on core 1)
     Controls.h              USB-serial key input
     assets/                 generated face headers go here (gitignored)
