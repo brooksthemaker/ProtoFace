@@ -9,6 +9,7 @@
 #include <Adafruit_Protomatter.h>
 
 #include "config.h"
+#include "Accessories.h"
 #include "Controls.h"
 #include "FaceEngine.h"
 #include "FaceState.h"
@@ -36,6 +37,10 @@ static Particles *particles = nullptr;
 static uint8_t colorIdx = 0;
 static Material material;
 static uint32_t prevMicros = 0;
+
+#if ACCESSORY_ENABLE
+static Accessories accessories;
+#endif
 
 static inline uint16_t to565(uint8_t r, uint8_t g, uint8_t b) {
   return ((uint16_t)(r & 0xF8) << 8) | ((uint16_t)(g & 0xFC) << 3) | (b >> 3);
@@ -83,6 +88,10 @@ void setup() {
 
   material = Material{DEFAULT_MATERIAL_R, DEFAULT_MATERIAL_G, DEFAULT_MATERIAL_B};
 
+#if ACCESSORY_ENABLE
+  accessories.begin();
+#endif
+
   Serial.print("Protoface (Pico/C++) running: ");
   Serial.print(CANVAS_W); Serial.print("x"); Serial.print(CANVAS_H);
   Serial.print(" @ "); Serial.print(TARGET_FPS); Serial.println(" fps target");
@@ -104,6 +113,10 @@ void loop() {
   engine->render(canvas, *state, material);
   particles->update(dt);
   particles->composite(canvas);
+
+#if ACCESSORY_ENABLE
+  accessories.update(dt, material, *state);
+#endif
 
   // Pack RGB888 -> RGB565 and push to the panel.
   for (int i = 0; i < CANVAS_W * CANVAS_H; i++) {

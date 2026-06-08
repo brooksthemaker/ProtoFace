@@ -41,6 +41,12 @@
 #define DEFAULT_MATERIAL_B 180
 #define DEFAULT_EFFECT 0                // index into Particles effect table; 0 = none
 
+// ── Addressable LEDs (cheeks / ears / accents) ──────────────────────────────
+// Optional WS2812/NeoPixel zones driven alongside the HUB75 face. Set to 1 and
+// edit the zone table at the top of Accessories.cpp (data pins, LED counts,
+// modes). Needs the Adafruit NeoPixel library. 0 = disabled (no dependency).
+#define ACCESSORY_ENABLE 0
+
 // ── Active face ─────────────────────────────────────────────────────────────
 // Generate with: tools/convert_assets.py --name main --out assets/main.h ...
 #if __has_include("assets/main.h")
