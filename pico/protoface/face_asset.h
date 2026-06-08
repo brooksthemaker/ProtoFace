@@ -30,7 +30,12 @@ struct FaceAsset {
   FaceImage blink;
   bool has_mouth;
   FaceImage mouth_open;
-  FaceBox eye_l;               // w<0 if unset
+  // Region designation. A mask (w*h, 0..255 weight = luminance*alpha) takes
+  // precedence when non-null: it lets the blink/mouth area be any shape, with
+  // soft edges. Otherwise the rectangular box is used; an unset box has w<0.
+  FaceBox eye_l;
   FaceBox eye_r;
   FaceBox mouth;
+  const uint8_t *eye_mask;     // null = fall back to eye boxes (then whole-face)
+  const uint8_t *mouth_mask;   // null = fall back to mouth box
 };

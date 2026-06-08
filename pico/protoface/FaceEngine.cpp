@@ -45,6 +45,16 @@ void FaceEngine::blendWhole(const FaceImage &src, float t) {
   }
 }
 
+void FaceEngine::blendMask(const FaceImage &src, float t, const uint8_t *mask) {
+  int n = fw_ * fh_;
+  for (int i = 0; i < n; i++) {
+    if (mask[i] == 0) continue;            // outside the drawn region
+    float mt = t * (mask[i] / 255.0f);     // soft, shape-following weight
+    wlum_[i] = lerp8(wlum_[i], src.lum[i], mt);
+    walpha_[i] = lerp8(walpha_[i], src.alpha[i], mt);
+  }
+}
+
 void FaceEngine::compose(const FaceState &state) {
   const FaceImage &cur = asset_.expr[state.expression()];
   const FaceImage &prev = asset_.expr[state.prevExpressionIdx()];
@@ -61,10 +71,12 @@ void FaceEngine::compose(const FaceState &state) {
     }
   }
 
-  // Blink: eye regions if defined, else whole-face swap.
+  // Blink: shape mask wins; else eye boxes; else whole-face swap.
   float bw = state.blinkWeight();
   if (bw > 0.0f && asset_.has_blink) {
-    if (asset_.eye_l.w >= 0 || asset_.eye_r.w >= 0) {
+    if (asset_.eye_mask) {
+      blendMask(asset_.blink, bw, asset_.eye_mask);
+    } else if (asset_.eye_l.w >= 0 || asset_.eye_r.w >= 0) {
       blendRegion(asset_.blink, bw, asset_.eye_l);
       blendRegion(asset_.blink, bw, asset_.eye_r);
     } else {
@@ -72,9 +84,13 @@ void FaceEngine::compose(const FaceState &state) {
     }
   }
 
-  // Mouth open.
-  if (state.mouth_open > 0.0f && asset_.has_mouth && asset_.mouth.w >= 0) {
-    blendRegion(asset_.mouth_open, state.mouth_open, asset_.mouth);
+  // Mouth open: shape mask wins; else mouth box.
+  if (state.mouth_open > 0.0f && asset_.has_mouth) {
+    if (asset_.mouth_mask) {
+      blendMask(asset_.mouth_open, state.mouth_open, asset_.mouth_mask);
+    } else if (asset_.mouth.w >= 0) {
+      blendRegion(asset_.mouth_open, state.mouth_open, asset_.mouth);
+    }
   }
 }
 

@@ -36,6 +36,21 @@ def _arrays(img, w, h):
     return lum, alpha
 
 
+def _mask_array(img, w, h):
+    """Return a single 0..255 weight per pixel = luminance * alpha / 255.
+
+    Works whether the mask is drawn white-on-transparent or white-on-black.
+    """
+    img = img.convert("RGBA").resize((w, h), Image.NEAREST)
+    px = img.load()
+    out = []
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            out.append(((r + g + b) // 3) * a // 255)
+    return out
+
+
 def _emit_array(out, name, data):
     out.append("static const uint8_t %s[%d] = {" % (name, len(data)))
     line = "  "
@@ -132,6 +147,20 @@ def convert(src, name, out_path, w, h):
     blink_base = special(cfg.get("blink", "blink.png"))
     mouth_base = special("mouth_open.png")
 
+    def bake_mask(fname, suffix):
+        path = os.path.join(src, fname)
+        if not os.path.exists(path):
+            return None
+        with Image.open(path) as im:
+            data = _mask_array(im, w, h)
+        arr = "%s_%s" % (name, suffix)
+        _emit_array(out, arr, data)
+        out.append("")
+        return arr
+
+    eye_mask = bake_mask("eye_mask.png", "eyemask")
+    mouth_mask = bake_mask("mouth_mask.png", "mouthmask")
+
     has_blink = "true" if blink_base else "false"
     blink_img = "{%s_lum, %s_alpha}" % (blink_base, blink_base) if blink_base else "{0, 0}"
     has_mouth = "true" if mouth_base else "false"
@@ -145,6 +174,8 @@ def convert(src, name, out_path, w, h):
     out.append("  %s," % _box(cfg, "eye_left", sx, sy))
     out.append("  %s," % _box(cfg, "eye_right", sx, sy))
     out.append("  %s," % _box(cfg, "mouth", sx, sy))
+    out.append("  %s," % (eye_mask if eye_mask else "0"))
+    out.append("  %s," % (mouth_mask if mouth_mask else "0"))
     out.append("};")
     out.append("")
 

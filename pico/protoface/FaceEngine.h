@@ -28,6 +28,8 @@ class FaceEngine {
   void compose(const FaceState &state);  // -> wlum_/walpha_
   void blendRegion(const FaceImage &src, float t, const FaceBox &box);
   void blendWhole(const FaceImage &src, float t);
+  // Per-pixel blend weighted by a 0..255 shape mask (t scaled by mask/255).
+  void blendMask(const FaceImage &src, float t, const uint8_t *mask);
 
   const FaceAsset &asset_;
   uint16_t fw_, fh_, cw_, ch_;

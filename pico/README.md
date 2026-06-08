@@ -89,6 +89,25 @@ Edit `protoface/config.h` (compile-time) for pins, panel geometry, bit depth,
 target FPS, default colour/effect/brightness, and the active face. Named
 colours live in `Material.h`.
 
+## Face regions (blink / mouth)
+
+The blink frame (`blink.png`) and mouth-open frame (`mouth_open.png`) are only
+applied inside a designated region. Two ways to designate it, in order of
+precedence:
+
+1. **Shape mask PNG (recommended)** — drop an `eye_mask.png` and/or
+   `mouth_mask.png` in the face folder. Draw the region white (on transparent
+   or black); the baker turns it into a per-pixel 0–255 weight
+   (`luminance × alpha`). This allows **any shape, with soft/feathered edges**,
+   and is blended as `blink_weight × mask`. Grays = partial blink.
+2. **Rectangle boxes** — `eye_left` / `eye_right` / `mouth` in the face's
+   `config.json` (as on the CM5 build). Used when no mask is present.
+3. **Whole-face** — if neither a mask nor eye boxes exist, blink swaps the whole
+   face.
+
+Masks are baked automatically by `convert_assets.py` when the PNGs are present;
+no config changes needed.
+
 ## Feature parity status
 
 | Feature | Status |
