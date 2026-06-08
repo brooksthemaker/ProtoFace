@@ -147,6 +147,50 @@ while enabled. **Calibrate** `LIGHT_RAW_DARK`/`LIGHT_RAW_BRIGHT` to your
 `LIGHT_SMOOTH` controls how fast it reacts. **Wiring:** LDR from 3.3 V to the
 ADC pin, a fixed resistor (~10 kΩ) from the ADC pin to GND (classic divider).
 
+## In-helmet preview display (colour SPI TFT)
+
+A secondary **ST7789 240×320 colour SPI TFT** inside the helmet mirrors the face
+plus a status line (expression / effect / brightness), so the wearer can confirm
+what's showing. Set `PREVIEW_ENABLE` in `config.h` and add the **Adafruit
+ST7789** + **Adafruit GFX** libraries.
+
+It runs on the **RP2350's second core** (`setup1()`/`loop1()`), so pushing a
+frame over SPI never stalls the face loop on core 0. The preview has its own
+refresh cap (`PREVIEW_FPS`, default 12 Hz) and nearest-neighbour upscales the
+128×32 face by `PREVIEW_SCALE`. Reads of the shared canvas are lock-free; brief
+tearing is harmless for a monitor.
+
+**Wiring (hardware SPI0):**
+
+| TFT pin | Pico |
+|---|---|
+| SCK / SCL | GP18 (fixed — SPI0 clock) |
+| MOSI / SDA | GP19 (fixed — SPI0 TX) |
+| CS | `PREVIEW_CS` (GP20) |
+| DC | `PREVIEW_DC` (GP21) |
+| RST | `PREVIEW_RST` (GP22) |
+| BLK (backlight) | 3.3 V, or `PREVIEW_BL` if you want software control |
+| VCC / GND | 3.3 V / GND |
+
+Set `PREVIEW_ROTATION` (1 or 3 = landscape) and `PREVIEW_W/H` to match.
+
+## Default GPIO map
+
+To avoid collisions when enabling the optional features:
+
+| GPIO | Used by |
+|---|---|
+| GP0–GP13 | HUB75 panel (RGB, address, CLK/LAT/OE) |
+| GP14, GP15 | buttons (default) |
+| GP16, GP17 | addressable-LED zones (default) |
+| GP18, GP19 | preview SPI (SCK, MOSI) — fixed |
+| GP20, GP21, GP22 | preview CS / DC / RST |
+| GP26 | light sensor (ADC0) |
+| GP27 | boop sensor |
+
+All assignments except HUB75 and the SPI clock/data are configurable in
+`config.h` / the per-module tables.
+
 ## Build & flash
 
 1. **Install the toolchain**
@@ -155,8 +199,9 @@ ADC pin, a fixed resistor (~10 kΩ) from the ADC pin to GND (classic divider).
      `https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json`,
      install "Raspberry Pi Pico/RP2040/RP2350".
    - Libraries (Library Manager): **Adafruit Protomatter** + **Adafruit GFX
-     Library**. Add **Adafruit NeoPixel** only if you set `ACCESSORY_ENABLE`
-     (cheek/accent LEDs).
+     Library**. Add **Adafruit NeoPixel** if you set `ACCESSORY_ENABLE`
+     (cheek/accent LEDs), and **Adafruit ST7789** if you set `PREVIEW_ENABLE`
+     (in-helmet display).
 
 2. **Bake a face header** on your desktop (needs Pillow):
    ```bash
@@ -231,6 +276,7 @@ no config changes needed.
 | Buttons (cycle expression/colour/effect/etc.) | ✅ debounced, config-driven |
 | Boop sensor | ✅ digital sensor → triggerBoop |
 | Light sensor (ambient auto-brightness) | ✅ analog LDR (new; not in CM5) |
+| In-helmet preview (colour SPI TFT) | ✅ ST7789 on core 1 (new; not in CM5) |
 | Mic-driven mouth + audio particles | ⬜ Phase 4 |
 | Gyro input | ⬜ Phase 4 |
 | Multi-layer particle stacks / presets | ⬜ Phase 2 |
@@ -260,6 +306,7 @@ pico/
     Particles.h/.cpp        additive particle effects
     Accessories.h/.cpp      WS2812 cheek/accent LED zones (face-synced)
     Inputs.h/.cpp           buttons + boop sensor + light sensor (auto-brightness)
+    Preview.h/.cpp          in-helmet colour SPI TFT mirror (runs on core 1)
     Controls.h              USB-serial key input
     assets/                 generated face headers go here (gitignored)
 ```

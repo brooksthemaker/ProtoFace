@@ -56,7 +56,7 @@
 
 // Boop sensor: a digital proximity/touch sensor that shows an expression briefly.
 #define BOOP_ENABLE 0
-#define BOOP_PIN 18
+#define BOOP_PIN 27              // GP18/19 are reserved for the preview SPI
 #define BOOP_ACTIVE_LOW 1        // 1 = sensor pulls the pin to GND when booped
 #define BOOP_EXPRESSION 0        // expression index to show (order in the face)
 #define BOOP_DURATION 1.5f       // seconds to hold it
@@ -70,6 +70,22 @@
 #define LIGHT_MIN_BRIGHT 24      // brightness floor (never fully off)
 #define LIGHT_MAX_BRIGHT 255     // brightness ceiling
 #define LIGHT_SMOOTH 0.1f        // EMA smoothing per frame (0..1; lower = slower)
+
+// ── In-helmet preview display (colour SPI TFT, ST7789 240x320) ──────────────
+// A secondary display that mirrors the face + status text so the wearer can
+// confirm what's showing. Runs on the RP2350's SECOND core (core1) so the SPI
+// refresh doesn't slow the face on core0. Needs Adafruit_ST7789 + Adafruit_GFX.
+// Uses hardware SPI0: SCK = GP18, MOSI = GP19 (do not reuse these elsewhere).
+#define PREVIEW_ENABLE 0
+#define PREVIEW_CS 20
+#define PREVIEW_DC 21
+#define PREVIEW_RST 22
+#define PREVIEW_BL -1            // backlight GPIO, or -1 if BL is tied to 3.3V
+#define PREVIEW_W 320            // display width AFTER rotation (landscape)
+#define PREVIEW_H 240            // display height after rotation
+#define PREVIEW_ROTATION 1       // 0..3; 1 or 3 = landscape for a 240x320 panel
+#define PREVIEW_SCALE 2          // face px -> preview px (128x32 -> 256x64)
+#define PREVIEW_FPS 12           // preview refresh cap, Hz (independent of face)
 
 // ── Active face ─────────────────────────────────────────────────────────────
 // Generate with: tools/convert_assets.py --name main --out assets/main.h ...

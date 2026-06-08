@@ -16,6 +16,7 @@
 #include "Inputs.h"
 #include "Material.h"
 #include "Particles.h"
+#include "Preview.h"
 
 static uint8_t rgbPins[] = RGB_PINS;
 static uint8_t addrPins[] = ADDR_PINS;
@@ -43,6 +44,9 @@ static uint32_t prevMicros = 0;
 static Accessories accessories;
 #endif
 static Inputs inputs;
+#if PREVIEW_ENABLE
+static Preview preview;
+#endif
 
 static inline uint16_t to565(uint8_t r, uint8_t g, uint8_t b) {
   return ((uint16_t)(r & 0xF8) << 8) | ((uint16_t)(g & 0xFC) << 3) | (b >> 3);
@@ -155,3 +159,26 @@ void loop() {
   float elapsed = (micros() - now) / 1000000.0f;
   if (elapsed < target) delay((uint32_t)((target - elapsed) * 1000.0f));
 }
+
+// ── Core 1: in-helmet preview display ───────────────────────────────────────
+// Runs the SPI TFT mirror on the second core so its refresh never stalls the
+// face loop on core 0. Reads the shared canvas/state at its own capped rate;
+// brief tearing is harmless for a monitor.
+#if PREVIEW_ENABLE
+void setup1() { preview.begin(); }
+
+void loop1() {
+  static uint32_t last = 0;
+  uint32_t now = millis();
+  if (now - last < (uint32_t)(1000 / PREVIEW_FPS)) return;
+  last = now;
+
+  // state/particles are built in core 0's setup(); skip until they exist.
+  if (!state || !particles) return;
+
+  const char *expr = ACTIVE_FACE.names[state->expression()];
+  const char *fx = Particles::effectName(particles->effect());
+  preview.update(canvas, CANVAS_W, CANVAS_H, expr,
+                 material.r, material.g, material.b, fx, state->brightness);
+}
+#endif
