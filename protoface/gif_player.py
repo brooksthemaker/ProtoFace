@@ -41,30 +41,34 @@ class GifPlayer:
             self.stop()
             return
 
+        frames:    list[np.ndarray] = []
+        durations: list[float]      = []
+
+        # `with` closes the underlying file handle — Pillow keeps it open for
+        # lazy frame seeks, which leaked an fd per load() with auto_cycle.
         try:
-            img = Image.open(path)
+            with Image.open(path) as img:
+                try:
+                    while True:
+                        frame = img.convert('RGBA').resize(
+                            (self.w, self.h), Image.NEAREST)
+                        frames.append(np.array(frame, dtype=np.uint8))
+                        # GIF stores duration in centiseconds; convert to seconds
+                        duration = img.info.get('duration', 100) / 1000.0
+                        durations.append(max(0.016, duration))  # floor at ~60fps
+                        img.seek(img.tell() + 1)
+                except EOFError:
+                    pass
         except (FileNotFoundError, UnidentifiedImageError) as e:
             print(f"[gif] cannot open '{path}': {e}")
             return
 
-        self._frames    = []
-        self._durations = []
-
-        try:
-            while True:
-                frame = img.convert('RGBA').resize(
-                    (self.w, self.h), Image.NEAREST)
-                self._frames.append(np.array(frame, dtype=np.uint8))
-                # GIF stores duration in centiseconds; convert to seconds
-                duration = img.info.get('duration', 100) / 1000.0
-                self._durations.append(max(0.016, duration))  # floor at ~60fps
-                img.seek(img.tell() + 1)
-        except EOFError:
-            pass
-
-        if not self._frames:
+        if not frames:
             print(f"[gif] no frames decoded from '{path}'")
             return
+
+        self._frames    = frames
+        self._durations = durations
 
         self._loop      = loop
         self._frame_idx = 0
