@@ -68,6 +68,12 @@ _EFFECT_MAP: dict[int, str | dict] = {
     # Protoface-only extensions (no ProtoTracer equivalent)
     16: 'clouds',
     17: {'preset': 'nebula'},
+    # Star field family
+    18: {'preset': 'starfield'},
+    19: {'preset': 'warp'},
+    20: {'preset': 'constellation'},
+    21: {'preset': 'shooting_stars'},
+    22: {'preset': 'night_sky'},
 }
 
 _MATERIAL_COLOR_MAP = {

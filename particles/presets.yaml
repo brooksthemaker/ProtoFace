@@ -58,7 +58,69 @@ radar:
   max_radius: 25
   blend: add
 
+# ── Star field presets ────────────────────────────────────────────────────────
+
+# 1. Parallax star field: stars stream outward from the canvas centre.
+starfield:
+  effect: starfield
+  count: 80
+  colors: [[255,255,255],[200,220,255],[255,240,210],[210,235,255]]
+  speed_min: 1.2
+  speed_max: 3.2
+  size_max: 2
+  blend: add
+
+# 2. Hyperspace warp: faster stars smeared into radial streaks.
+warp:
+  effect: warp
+  count: 70
+  colors: [[255,255,255],[200,225,255],[180,210,255]]
+  speed_min: 3.0
+  speed_max: 6.0
+  streak: 1.2
+  blend: add
+
+# 3. Still twinkling night sky (no motion).
+constellation:
+  effect: constellation
+  count: 55
+  colors: [[255,255,255],[200,220,255],[255,240,210],[255,255,235]]
+  twinkle_min: 0.7
+  twinkle_max: 3.0
+  bright_frac: 0.18
+  blend: add
+
+# Lone meteors over a dark sky.
+shooting_stars:
+  effect: shootingstars
+  count: 3
+  colors: [[255,255,255],[200,225,255],[255,240,220]]
+  speed_min: 55
+  speed_max: 95
+  rate: 0.8
+  tail: 9
+  blend: add
+
 # ── Multi-layer presets ───────────────────────────────────────────────────────
+
+# 4. Calm twinkling sky with the occasional shooting star crossing it.
+night_sky:
+  layers:
+    - effect: constellation       # still twinkling backdrop
+      count: 55
+      colors: [[255,255,255],[200,220,255],[255,240,210],[255,255,235]]
+      twinkle_min: 0.6
+      twinkle_max: 2.6
+      bright_frac: 0.18
+      blend: add
+    - effect: shootingstars       # rare meteors from centre to edge
+      count: 2
+      colors: [[255,255,255],[210,230,255]]
+      speed_min: 55
+      speed_max: 95
+      rate: 0.5
+      tail: 10
+      blend: add
 
 # Layered fire: slow orange base, fast yellow sparks, rare white glints
 fire:
