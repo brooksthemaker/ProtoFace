@@ -1,0 +1,9 @@
+# Generated face headers (bake with tools/convert_assets.py before building).
+protoface/assets/*.h
+
+# Arduino build output.
+build/
+*.elf
+*.uf2
+*.bin
+*.hex

@@ -634,17 +634,281 @@ class CloudsEffect(BaseEffect):
         return out
 
 
+# ── Star field (3-D parallax) ─────────────────────────────────────────────────
+
+class StarfieldEffect(BaseEffect):
+    """3-D parallax star field: stars stream outward from the canvas centre.
+
+    The centre of the 128x32 canvas is the vanishing point (the origin); the
+    panel edges are the near plane. Each star has a fixed world direction
+    (``vx``/``vy`` in [-1, 1]) and a depth ``z`` stored in ``extra``. Depth
+    shrinks every frame, so the perspective projection ``screen = centre +
+    dir * fov / z`` pushes the star from the centre out toward the edges,
+    growing brighter and larger as it "approaches". Stars recycle to the far
+    depth once they leave the screen, so the field never empties.
+
+    Per-layer keys (all optional):
+        count       int    number of stars                 (default 70)
+        speed_min   float  min approach speed (depth/s)     (default 1.2)
+        speed_max   float  max approach speed (depth/s)     (default 3.0)
+        colors      list   [[r,g,b], ...] star palette      (default whites)
+        size_max    int    max radius for near stars        (default 2)
+        fov         float  projection scale (px)            (default w * 0.5)
+    """
+
+    _DEFAULT_COLORS = [
+        (255, 255, 255), (200, 220, 255), (255, 240, 210), (210, 235, 255),
+    ]
+    _SPEED = (1.2, 3.0)
+    _ZFAR = 8.0
+    _ZNEAR = 0.55
+
+    def _pick(self) -> tuple[int, int, int]:
+        pool = self.cfg.get('colors') or self._DEFAULT_COLORS
+        c = random.choice(pool)
+        return int(c[0]), int(c[1]), int(c[2])
+
+    def _fov(self) -> float:
+        return float(self.cfg.get('fov', self.w * 0.5))
+
+    def _respawn(self, p: Particle):
+        """Send a star back to the far plane with a fresh direction/colour."""
+        wx = random.uniform(-1, 1)
+        wy = random.uniform(-1, 1)
+        while abs(wx) < 0.05 and abs(wy) < 0.05:   # avoid a dead-centre star
+            wx = random.uniform(-1, 1)
+            wy = random.uniform(-1, 1)
+        p.vx, p.vy = wx, wy
+        p.extra = self._ZFAR
+        p.max_life = _speed(self.cfg, *self._SPEED)
+        p.r, p.g, p.b = self._pick()
+        p.life = 0.0
+
+    def _spawn(self) -> Particle:
+        p = Particle(max_life=1.0)
+        self._respawn(p)
+        p.extra = random.uniform(self._ZNEAR + 0.5, self._ZFAR)   # spread depths
+        return p
+
+    def update(self, dt: float):
+        cx, cy = self.w * 0.5, self.h * 0.5
+        fov = self._fov()
+        size_max = int(self.cfg.get('size_max', 2))
+        span = self._ZFAR - self._ZNEAR
+        for p in self.particles:
+            p.extra -= p.max_life * dt          # approach: depth shrinks
+            recycle = p.extra <= self._ZNEAR
+            if not recycle:
+                f = fov / p.extra
+                p.x = cx + p.vx * f
+                p.y = cy + p.vy * f
+                if p.x < -2 or p.x > self.w + 1 or p.y < -2 or p.y > self.h + 1:
+                    recycle = True
+            if recycle:
+                self._respawn(p)
+                f = fov / p.extra
+                p.x = cx + p.vx * f
+                p.y = cy + p.vy * f
+            near = (self._ZFAR - p.extra) / span
+            p.life = float(np.clip(near, 0.0, 1.0))
+            p.size = size_max if (size_max > 1 and p.life > 0.75) else 1
+
+        while len(self.particles) < self._count(70):
+            self.particles.append(self._spawn())
+
+    def render(self) -> np.ndarray:
+        canvas = np.zeros((self.h, self.w, 4), dtype=np.uint8)
+        for p in self.particles:
+            alpha = 0.2 + 0.8 * p.life
+            self._draw_dot(canvas, p.x, p.y, int(p.r), int(p.g), int(p.b),
+                           alpha, p.size)
+        return canvas
+
+
+# ── Warp (hyperspace) ─────────────────────────────────────────────────────────
+
+class WarpEffect(StarfieldEffect):
+    """Hyperspace warp — the star field cranked to "jump to lightspeed".
+
+    Reuses the star field's centre-origin perspective projection but flies the
+    stars outward faster and smears each into a radial streak pointing back to
+    the centre. Streak length grows as a star nears the edge, so the field
+    rushes past in bright tapering lines.
+
+    Per-layer keys (all optional):
+        count       int    number of stars                 (default 60)
+        speed_min   float  min approach speed (depth/s)     (default 2.5)
+        speed_max   float  max approach speed (depth/s)     (default 5.5)
+        colors      list   [[r,g,b], ...] palette           (default whites)
+        streak      float  streak length multiplier         (default 1.0)
+        size_max    int    max radius for the leading dot    (default 1)
+    """
+
+    _SPEED = (2.5, 5.5)
+    _ZNEAR = 0.4
+
+    def render(self) -> np.ndarray:
+        canvas = np.zeros((self.h, self.w, 4), dtype=np.uint8)
+        cx, cy = self.w * 0.5, self.h * 0.5
+        gain = float(self.cfg.get('streak', 1.0))
+        for p in self.particles:
+            alpha = 0.25 + 0.75 * p.life
+            dx, dy = p.x - cx, p.y - cy
+            dist = math.hypot(dx, dy) or 1.0
+            ux, uy = dx / dist, dy / dist            # outward unit vector
+            length = (1.0 + p.life * 6.0) * gain     # longer as it nears edge
+            n = max(1, int(length))
+            for i in range(n + 1):                   # streak back toward centre
+                t = i / n
+                a = alpha * (1.0 - t)
+                if a <= 0:
+                    break
+                self._draw_dot(canvas, p.x - ux * length * t, p.y - uy * length * t,
+                               int(p.r), int(p.g), int(p.b), a,
+                               p.size if i == 0 else 1)
+        return canvas
+
+
+# ── Constellation (still twinkling sky) ───────────────────────────────────────
+
+class ConstellationEffect(BaseEffect):
+    """A still night sky: stars hold fixed positions and twinkle, each breathing
+    brightness on its own phase and rate. A fraction are "bright" stars that sit
+    a touch larger and grow a soft cross-shaped glint at their peak. Nothing
+    moves off screen, so no centre/edge geometry applies.
+
+    Per-layer keys (all optional):
+        count        int    number of stars                (default 50)
+        colors       list   [[r,g,b], ...] palette          (default whites)
+        twinkle_min  float  slowest twinkle rate (rad/s)    (default 0.8)
+        twinkle_max  float  fastest twinkle rate (rad/s)    (default 3.0)
+        bright_frac  float  fraction that glint  0..1        (default 0.15)
+    """
+
+    _DEFAULT_COLORS = [
+        (255, 255, 255), (200, 220, 255), (255, 240, 210), (255, 255, 235),
+    ]
+
+    def update(self, dt: float):
+        # vx = twinkle rate, vy = base brightness, extra = phase, size 2 = bright.
+        for p in self.particles:
+            p.extra += p.vx * dt
+            p.life = p.vy * (0.45 + 0.55 * (0.5 + 0.5 * math.sin(p.extra)))
+
+        while len(self.particles) < self._count(50):
+            pool = self.cfg.get('colors') or self._DEFAULT_COLORS
+            c = random.choice(pool)
+            bright = random.random() < float(self.cfg.get('bright_frac', 0.15))
+            self.particles.append(Particle(
+                x=random.uniform(0, self.w - 1),
+                y=random.uniform(0, self.h - 1),
+                vx=random.uniform(self.cfg.get('twinkle_min', 0.8),
+                                  self.cfg.get('twinkle_max', 3.0)),
+                vy=1.0 if bright else random.uniform(0.4, 0.85),
+                r=int(c[0]), g=int(c[1]), b=int(c[2]),
+                size=2 if bright else 1,
+                max_life=9999, life=1.0,
+                extra=random.uniform(0, math.tau),
+            ))
+
+    def render(self) -> np.ndarray:
+        canvas = np.zeros((self.h, self.w, 4), dtype=np.uint8)
+        for p in self.particles:
+            alpha = float(np.clip(p.life, 0.0, 1.0))
+            r, g, b = int(p.r), int(p.g), int(p.b)
+            self._draw_dot(canvas, p.x, p.y, r, g, b, alpha, 1)
+            if p.size >= 2 and alpha > 0.55:        # soft cross glint at peak
+                a2 = (alpha - 0.55) * 1.5
+                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    self._draw_dot(canvas, p.x + dx, p.y + dy, r, g, b, a2, 1)
+        return canvas
+
+
+# ── Shooting stars (meteors) ──────────────────────────────────────────────────
+
+class ShootingStarsEffect(BaseEffect):
+    """Occasional meteors that streak from the canvas centre out to a panel edge,
+    leaving a fading tail. Sparse by design — they punctuate a calm sky rather
+    than fill it. The spawn origin is the canvas centre (the origin); meteors
+    fly radially out to the far edges and recycle once they leave the screen.
+
+    Per-layer keys (all optional):
+        count        int    max simultaneous meteors        (default 3)
+        colors       list   [[r,g,b], ...] palette           (default white/blue)
+        speed_min    float  min px/s                         (default 55)
+        speed_max    float  max px/s                         (default 90)
+        rate         float  spawns per second                (default 0.8)
+        tail         int    tail length in px                (default 8)
+    """
+
+    _DEFAULT_COLORS = [(255, 255, 255), (200, 225, 255), (255, 240, 220)]
+
+    def _spawn(self, cx: float, cy: float) -> Particle:
+        ang = random.uniform(0, math.tau)
+        spd = _speed(self.cfg, 55.0, 90.0)
+        pool = self.cfg.get('colors') or self._DEFAULT_COLORS
+        c = random.choice(pool)
+        r0 = random.uniform(0, 6)                 # nudge off-centre so the tail reads
+        return Particle(
+            x=cx + math.cos(ang) * r0, y=cy + math.sin(ang) * r0,
+            vx=math.cos(ang) * spd, vy=math.sin(ang) * spd,
+            r=int(c[0]), g=int(c[1]), b=int(c[2]),
+            size=_size(self.cfg, 1, 1),
+            max_life=2.5, life=1.0, extra=ang,
+        )
+
+    def update(self, dt: float):
+        cx, cy = self.w * 0.5, self.h * 0.5
+        tail = int(self.cfg.get('tail', 8))
+        for p in self.particles:
+            p.x += p.vx * dt
+            p.y += p.vy * dt
+            p.life -= dt / p.max_life
+        self.particles = [
+            p for p in self.particles
+            if p.life > 0 and -tail <= p.x <= self.w + tail
+            and -tail <= p.y <= self.h + tail
+        ]
+
+        rate = float(self.cfg.get('rate', 0.8)) * self._intensity
+        self._acc = getattr(self, '_acc', 0.0) + dt * rate
+        cap = self._count(3)
+        while self._acc >= 1.0:
+            self._acc -= 1.0
+            if len(self.particles) < cap:
+                self.particles.append(self._spawn(cx, cy))
+
+    def render(self) -> np.ndarray:
+        canvas = np.zeros((self.h, self.w, 4), dtype=np.uint8)
+        tail = int(self.cfg.get('tail', 8))
+        for p in self.particles:
+            spd = math.hypot(p.vx, p.vy) or 1.0
+            ux, uy = p.vx / spd, p.vy / spd
+            head = float(np.clip(p.life * 1.5, 0.0, 1.0))
+            for i in range(tail):
+                a = (1.0 - i / tail) * head
+                if a <= 0:
+                    break
+                self._draw_dot(canvas, p.x - ux * i, p.y - uy * i,
+                               int(p.r), int(p.g), int(p.b), a, 1)
+        return canvas
+
+
 # ── Registry ──────────────────────────────────────────────────────────────────
 
 EFFECT_REGISTRY: dict[str, type] = {
-    'sparkle':   SparkleEffect,
-    'snow':      SnowEffect,
-    'embers':    EmbersEffect,
-    'confetti':  ConfettiEffect,
-    'rings':     RingsEffect,
-    'rain':      RainEffect,
-    'fireflies': FirefliesEffect,
-    'clouds':    CloudsEffect,
+    'sparkle':       SparkleEffect,
+    'snow':          SnowEffect,
+    'embers':        EmbersEffect,
+    'confetti':      ConfettiEffect,
+    'rings':         RingsEffect,
+    'rain':          RainEffect,
+    'fireflies':     FirefliesEffect,
+    'clouds':        CloudsEffect,
+    'starfield':     StarfieldEffect,
+    'warp':          WarpEffect,
+    'constellation': ConstellationEffect,
+    'shootingstars': ShootingStarsEffect,
 }
 
 
