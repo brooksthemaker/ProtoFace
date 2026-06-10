@@ -211,11 +211,14 @@ class FaceLoader:
                 frame, self._mouth_open_img, self._mouth, mo)
 
         # 4. Wiggle + gyro offset
+        # .get() with the same defaults state.py uses: a partial wiggle: dict in
+        # config (e.g. only speed set) must not KeyError every frame.
         cfg_w = state.wiggle_cfg
-        dx = cfg_w['amplitude_x'] * math.sin(
-            2 * math.pi * cfg_w['speed'] * state.time)
-        dy = cfg_w['amplitude_y'] * math.sin(
-            2 * math.pi * cfg_w['speed'] * state.time * 1.3)
+        spd = cfg_w.get('speed', 0.3)
+        dx = cfg_w.get('amplitude_x', 2.0) * math.sin(
+            2 * math.pi * spd * state.time)
+        dy = cfg_w.get('amplitude_y', 1.0) * math.sin(
+            2 * math.pi * spd * state.time * 1.3)
         gx, gy = state.gyro_offset
         shift_x = dx + gx
         shift_y = dy + gy
