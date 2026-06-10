@@ -105,10 +105,11 @@ def _life(cfg: dict, default_min: float, default_max: float) -> float:
 
 
 def _size(cfg: dict, default_min: int = 1, default_max: int = 1) -> int:
-    return random.randint(
-        cfg.get('size_min', default_min),
-        cfg.get('size_max', default_max),
-    )
+    # Tolerate float values and size_min > size_max (e.g. only size_min: 3 set
+    # with the default max of 1) — randint would raise TypeError / ValueError.
+    lo = int(cfg.get('size_min', default_min))
+    hi = int(cfg.get('size_max', default_max))
+    return random.randint(lo, max(lo, hi))
 
 
 def _emit_pos(cfg: dict, w: int, h: int, default: str) -> tuple[float, float]:
