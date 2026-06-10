@@ -17,11 +17,6 @@ import os
 import sys
 import time
 
-try:
-    import fcntl              # POSIX file lock for the single-instance guard
-except ImportError:
-    fcntl = None
-
 import yaml
 import numpy as np
 
@@ -38,6 +33,7 @@ from protoface.inputs.gyro       import Gyro
 from protoface.inputs.boop       import BoopSensor
 from protoface.keyboard          import KeyReader
 from protoface.persistence       import LiveSettings, load_state, save_state
+from protoface.instance_lock     import acquire_instance_lock
 
 
 # Solo-mode (terminal) control palettes — cycled with the keyboard when running
@@ -139,22 +135,6 @@ def _panel_from_cfg(pcfg: dict) -> dict:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-def _single_instance_lock(path='/tmp/protoface.lock'):
-    """Hold an exclusive lock so a second Protoface can't start. Two instances
-    would both drive /dev/pio0 and garble the panels with static. Returns the
-    lock file object (keep a reference for the process lifetime); the lock is
-    released automatically when the process exits or is killed."""
-    if fcntl is None:
-        return None
-    fd = open(path, 'w')
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
-        print(f"[protoface] already running (lock held on {path}) — exiting.")
-        sys.exit(0)
-    return fd
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', default='config.yaml')
@@ -162,7 +142,7 @@ def main():
 
     # Refuse to start a second instance (prevents the /dev/pio0 contention that
     # shows up as static on the panels). Keep the handle alive for the run.
-    _instance_lock = _single_instance_lock()
+    _instance_lock = acquire_instance_lock()
 
     cfg = load_config(args.config)
 

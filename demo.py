@@ -26,6 +26,7 @@ from protoface.output.hub75 import HUB75Output
 from protoface.renderer import Renderer
 from protoface.particles import ParticleSystem
 from protoface.keyboard import KeyReader
+from protoface.instance_lock import acquire_instance_lock
 
 # ── Cyclable colours and effects ──────────────────────────────────────────────
 
@@ -99,6 +100,10 @@ def status(color_i, effect_i):
 
 
 def main():
+    # Same /tmp/protoface.lock guard as run.py — the demo drives the same
+    # /dev/pio0, so it must not run alongside a live Protoface instance.
+    _instance_lock = acquire_instance_lock()
+
     cfg, pw, ph, chain, parallel = load_panel_geometry()
     canvas_w, canvas_h = pw * chain, ph * parallel
 
