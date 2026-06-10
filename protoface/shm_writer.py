@@ -43,8 +43,10 @@ class ShmWriter:
             return
         data = bytes(frame.data) if frame.data.c_contiguous else frame.tobytes()
         self._seq = (self._seq + 1) & 0xFF
-        self._mm[0]                    = self._seq
+        # Pixels first, sequence byte last — readers treat a seq change as
+        # "frame ready", so bumping it before the copy hands them torn frames.
         self._mm[1:1 + self._pixels]   = data
+        self._mm[0]                    = self._seq
 
     def close(self) -> None:
         if self._mm is not None:

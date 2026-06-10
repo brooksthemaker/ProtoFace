@@ -105,10 +105,11 @@ def _life(cfg: dict, default_min: float, default_max: float) -> float:
 
 
 def _size(cfg: dict, default_min: int = 1, default_max: int = 1) -> int:
-    return random.randint(
-        cfg.get('size_min', default_min),
-        cfg.get('size_max', default_max),
-    )
+    # Tolerate float values and size_min > size_max (e.g. only size_min: 3 set
+    # with the default max of 1) — randint would raise TypeError / ValueError.
+    lo = int(cfg.get('size_min', default_min))
+    hi = int(cfg.get('size_max', default_max))
+    return random.randint(lo, max(lo, hi))
 
 
 def _emit_pos(cfg: dict, w: int, h: int, default: str) -> tuple[float, float]:
@@ -136,6 +137,15 @@ class BaseEffect:
         self.cfg = cfg
         self.particles: list[Particle] = []
         self._intensity = float(cfg.get('intensity', 1.0))
+        # Per-instance scratch canvas reused by render() — zeroing in place is
+        # much cheaper than allocating a fresh (H, W, 4) array every frame.
+        self._canvas = np.zeros((height, width, 4), dtype=np.uint8)
+
+    def _blank_canvas(self) -> np.ndarray:
+        """Return the per-instance RGBA canvas, cleared. Contents are only
+        valid until the next render() call on this effect."""
+        self._canvas.fill(0)
+        return self._canvas
 
     def _count(self, default: int) -> int:
         return max(1, int(self.cfg.get('count', default) * self._intensity))
@@ -204,7 +214,7 @@ class SparkleEffect(BaseEffect):
             ))
 
     def render(self) -> np.ndarray:
-        canvas = np.zeros((self.h, self.w, 4), dtype=np.uint8)
+        canvas = self._blank_canvas()
         for p in self.particles:
             alpha = math.sin(p.life * math.pi)
             self._draw_particle(canvas, p, alpha)
@@ -244,7 +254,7 @@ class SnowEffect(BaseEffect):
             ))
 
     def render(self) -> np.ndarray:
-        canvas = np.zeros((self.h, self.w, 4), dtype=np.uint8)
+        canvas = self._blank_canvas()
         for p in self.particles:
             self._draw_particle(canvas, p, 0.9)
         return canvas
@@ -283,7 +293,7 @@ class EmbersEffect(BaseEffect):
             ))
 
     def render(self) -> np.ndarray:
-        canvas = np.zeros((self.h, self.w, 4), dtype=np.uint8)
+        canvas = self._blank_canvas()
         for p in self.particles:
             alpha = p.life
             gg = int(np.clip(p.g * p.life, 0, 255))
@@ -336,7 +346,7 @@ class ConfettiEffect(BaseEffect):
             ))
 
     def render(self) -> np.ndarray:
-        canvas = np.zeros((self.h, self.w, 4), dtype=np.uint8)
+        canvas = self._blank_canvas()
         for p in self.particles:
             self._draw_particle(canvas, p, 1.0)
         return canvas
@@ -368,7 +378,7 @@ class RingsEffect(BaseEffect):
             ))
 
     def render(self) -> np.ndarray:
-        canvas = np.zeros((self.h, self.w, 4), dtype=np.uint8)
+        canvas = self._blank_canvas()
         for p in self.particles:
             self._draw_circle(canvas, int(p.x), int(p.y), int(p.extra),
                               int(p.r), int(p.g), int(p.b), p.life)
@@ -424,7 +434,7 @@ class RainEffect(BaseEffect):
             ))
 
     def render(self) -> np.ndarray:
-        canvas = np.zeros((self.h, self.w, 4), dtype=np.uint8)
+        canvas = self._blank_canvas()
         for p in self.particles:
             length = int(p.extra)
             ix = int(p.x)
@@ -465,7 +475,7 @@ class FirefliesEffect(BaseEffect):
             ))
 
     def render(self) -> np.ndarray:
-        canvas = np.zeros((self.h, self.w, 4), dtype=np.uint8)
+        canvas = self._blank_canvas()
         for p in self.particles:
             self._draw_particle(canvas, p, float(np.clip(p.life, 0, 1)))
         return canvas
@@ -622,13 +632,17 @@ class CloudsEffect(BaseEffect):
         sub[:, :, 3] = np.maximum(sub[:, :, 3], a)
 
     def render(self) -> np.ndarray:
-        acc = np.zeros((self.h, self.w, 4), dtype=np.float32)
+        acc = getattr(self, '_acc', None)
+        if acc is None:
+            acc = self._acc = np.zeros((self.h, self.w, 4), dtype=np.float32)
+        else:
+            acc.fill(0)
         softness = float(np.clip(self.cfg.get('softness', 0.6), 0.0, 1.0))
         power = 1.0 + (1.0 - softness) * 2.0
         # Biggest first so smaller, denser clumps win the max-union on top.
         for p in sorted(self.particles, key=lambda q: -q.size):
             self._draw_clump(acc, p, power)
-        out = np.zeros((self.h, self.w, 4), dtype=np.uint8)
+        out = self._blank_canvas()
         out[:, :, :3] = np.clip(acc[:, :, :3], 0, 255).astype(np.uint8)
         out[:, :, 3] = np.clip(acc[:, :, 3] * 255.0, 0, 255).astype(np.uint8)
         return out
@@ -717,7 +731,7 @@ class StarfieldEffect(BaseEffect):
             self.particles.append(self._spawn())
 
     def render(self) -> np.ndarray:
-        canvas = np.zeros((self.h, self.w, 4), dtype=np.uint8)
+        canvas = self._blank_canvas()
         for p in self.particles:
             alpha = 0.2 + 0.8 * p.life
             self._draw_dot(canvas, p.x, p.y, int(p.r), int(p.g), int(p.b),
@@ -748,7 +762,7 @@ class WarpEffect(StarfieldEffect):
     _ZNEAR = 0.4
 
     def render(self) -> np.ndarray:
-        canvas = np.zeros((self.h, self.w, 4), dtype=np.uint8)
+        canvas = self._blank_canvas()
         cx, cy = self.w * 0.5, self.h * 0.5
         gain = float(self.cfg.get('streak', 1.0))
         for p in self.particles:
@@ -812,7 +826,7 @@ class ConstellationEffect(BaseEffect):
             ))
 
     def render(self) -> np.ndarray:
-        canvas = np.zeros((self.h, self.w, 4), dtype=np.uint8)
+        canvas = self._blank_canvas()
         for p in self.particles:
             alpha = float(np.clip(p.life, 0.0, 1.0))
             r, g, b = int(p.r), int(p.g), int(p.b)
@@ -879,7 +893,7 @@ class ShootingStarsEffect(BaseEffect):
                 self.particles.append(self._spawn(cx, cy))
 
     def render(self) -> np.ndarray:
-        canvas = np.zeros((self.h, self.w, 4), dtype=np.uint8)
+        canvas = self._blank_canvas()
         tail = int(self.cfg.get('tail', 8))
         for p in self.particles:
             spd = math.hypot(p.vx, p.vy) or 1.0
@@ -1042,7 +1056,11 @@ class ParticleSystem:
         if not self._layers:
             return None
 
-        out = np.zeros((self.h, self.w, 4), dtype=np.uint16)
+        out = getattr(self, '_acc', None)
+        if out is None:
+            out = self._acc = np.zeros((self.h, self.w, 4), dtype=np.uint16)
+        else:
+            out.fill(0)
         has_content  = False
         all_additive = True
 

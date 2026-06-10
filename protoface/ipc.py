@@ -176,6 +176,11 @@ class IpcServer:
             while self._running:
                 try:
                     chunk = conn.recv(4096)
+                except socket.timeout:
+                    # Idle is fine — ProtoHUD holds one persistent connection
+                    # and may go minutes between commands. Closing here made
+                    # the first command after idle vanish into an EPIPE.
+                    continue
                 except OSError:
                     break
                 if not chunk:
@@ -193,7 +198,17 @@ class IpcServer:
         except json.JSONDecodeError:
             print(f'[ipc] bad JSON: {raw[:80]}')
             return
+        if not isinstance(msg, dict):
+            print(f'[ipc] expected a JSON object: {raw[:80]}')
+            return
+        # A malformed field (e.g. "r": "abc") must not kill the connection
+        # thread — report it and keep serving.
+        try:
+            self._dispatch_msg(msg, conn)
+        except Exception as e:
+            print(f'[ipc] bad command {raw[:80]}: {e}')
 
+    def _dispatch_msg(self, msg: dict, conn: 'socket.socket | None'):
         cmd = msg.get('cmd', '')
 
         if cmd == 'set_color':

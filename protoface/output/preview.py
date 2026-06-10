@@ -36,8 +36,13 @@ class PreviewOutput:
     def __init__(self, cfg: dict):
         panel = cfg.get('panel', {})
         disp  = cfg.get('display', {})
-        self._w     = panel.get('width', 64)
-        self._h     = panel.get('height', 32)
+        # Canvas size computed the same way run.py does: panel size (config
+        # uses panel_width/panel_height; plain width/height is the legacy
+        # spelling) times the chain/parallel panel counts.
+        panel_w = panel.get('panel_width',  panel.get('width',  64))
+        panel_h = panel.get('panel_height', panel.get('height', 32))
+        self._w     = panel_w * panel.get('chain_length', 2)
+        self._h     = panel_h * panel.get('parallel', 2)
         self._scale = disp.get('preview_scale', 8)
         self._screen = None
         self._clock  = None

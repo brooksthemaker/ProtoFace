@@ -17,11 +17,6 @@ import os
 import sys
 import time
 
-try:
-    import fcntl              # POSIX file lock for the single-instance guard
-except ImportError:
-    fcntl = None
-
 import yaml
 import numpy as np
 
@@ -38,6 +33,7 @@ from protoface.inputs.gyro       import Gyro
 from protoface.inputs.boop       import BoopSensor
 from protoface.keyboard          import KeyReader
 from protoface.persistence       import LiveSettings, load_state, save_state
+from protoface.instance_lock     import acquire_instance_lock
 
 
 # Solo-mode (terminal) control palettes — cycled with the keyboard when running
@@ -139,22 +135,6 @@ def _panel_from_cfg(pcfg: dict) -> dict:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-def _single_instance_lock(path='/tmp/protoface.lock'):
-    """Hold an exclusive lock so a second Protoface can't start. Two instances
-    would both drive /dev/pio0 and garble the panels with static. Returns the
-    lock file object (keep a reference for the process lifetime); the lock is
-    released automatically when the process exits or is killed."""
-    if fcntl is None:
-        return None
-    fd = open(path, 'w')
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
-        print(f"[protoface] already running (lock held on {path}) — exiting.")
-        sys.exit(0)
-    return fd
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', default='config.yaml')
@@ -162,7 +142,7 @@ def main():
 
     # Refuse to start a second instance (prevents the /dev/pio0 contention that
     # shows up as static on the panels). Keep the handle alive for the run.
-    _instance_lock = _single_instance_lock()
+    _instance_lock = acquire_instance_lock()
 
     cfg = load_config(args.config)
 
@@ -258,6 +238,17 @@ def main():
 
     # ── Master canvas ─────────────────────────────────────────────────────────
     canvas = np.zeros((canvas_h, canvas_w, 3), dtype=np.uint8)
+
+    # Constant per-panel background layers — composite() never mutates its
+    # base, so build each once instead of reallocating every frame.
+    for p in panels:
+        _, _, w, h = p['region']
+        p['bg'] = renderer.sub_renderer(w, h).solid_layer(bg_color)
+
+    # Brightness LUT (uint8 → uint8), rebuilt only when brightness changes.
+    # Replaces the per-frame float64 full-frame multiply.
+    bright_lut: np.ndarray | None = None
+    bright_lut_for = -1
 
     # ── Solo terminal controls (no-op without a TTY, e.g. under systemd) ───────
     keyboard     = KeyReader()
@@ -414,7 +405,7 @@ def main():
                 # Sub-canvas renderer (uses cached per-panel size)
                 sub_renderer = renderer.sub_renderer(w, h)
 
-                bg  = sub_renderer.solid_layer(bg_color)
+                bg  = p['bg']
                 mat = p['material'][0].get_frame()
 
                 gif_frame = p['gif'].get_frame()
@@ -433,7 +424,11 @@ def main():
                 frame = sub_renderer.composite(bg, layers)
 
                 if brightness < 255:
-                    frame = (frame * (brightness / 255.0)).astype(np.uint8)
+                    if bright_lut_for != brightness:
+                        bright_lut = (np.arange(256) *
+                                      (brightness / 255.0)).astype(np.uint8)
+                        bright_lut_for = brightness
+                    frame = np.take(bright_lut, frame)
 
                 canvas[y:y+h, x:x+w] = frame[:, :, :3]
 

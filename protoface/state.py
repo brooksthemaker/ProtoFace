@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 import random
+import threading
 import time
 
 
@@ -63,7 +64,10 @@ class FaceState:
         # Brightness (0-255, applied as a scale factor in renderer)
         self.brightness = 255
 
-        # IPC requests (consumed once by run.py each tick)
+        # IPC requests (consumed once by run.py each tick). The lock keeps a
+        # setter running on an IPC thread from being lost to the main loop's
+        # read-then-clear in consume_ipc_requests().
+        self._ipc_lock = threading.Lock()
         self.custom_color: tuple[int,int,int] | None = None  # (r,g,b) or None
         self.gif_request:  int | None = None                 # gif_id index or None
         self.material_request: str | None = None             # material name or None
@@ -166,27 +170,32 @@ class FaceState:
     # ── IPC requests (thread-safe setters, consumed once per tick by run.py) ──
 
     def set_custom_color(self, r: int, g: int, b: int):
-        self.custom_color = (r, g, b)
+        with self._ipc_lock:
+            self.custom_color = (r, g, b)
 
     def request_gif(self, gif_id: int):
-        self.gif_request = gif_id
+        with self._ipc_lock:
+            self.gif_request = gif_id
 
     def request_material(self, name: str):
-        self.material_request = name
+        with self._ipc_lock:
+            self.material_request = name
 
     def release_ipc_control(self):
-        self._ipc_release = True
+        with self._ipc_lock:
+            self._ipc_release = True
 
     def consume_ipc_requests(self) -> dict:
-        """Return and clear all pending IPC requests."""
-        reqs = {
-            'custom_color':    self.custom_color,
-            'gif_request':     self.gif_request,
-            'material_request': self.material_request,
-            'release':         self._ipc_release,
-        }
-        self.custom_color     = None
-        self.gif_request      = None
-        self.material_request = None
-        self._ipc_release     = False
+        """Return and clear all pending IPC requests (atomically vs. setters)."""
+        with self._ipc_lock:
+            reqs = {
+                'custom_color':    self.custom_color,
+                'gif_request':     self.gif_request,
+                'material_request': self.material_request,
+                'release':         self._ipc_release,
+            }
+            self.custom_color     = None
+            self.gif_request      = None
+            self.material_request = None
+            self._ipc_release     = False
         return reqs

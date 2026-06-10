@@ -36,19 +36,19 @@ class Renderer:
         shade it.  Fully transparent pixels contribute nothing.
 
         Returns (H, W, 4) uint8 — still carries alpha so composite() can blend
-        it over the background correctly.
+        it over the background correctly. The returned array is a per-renderer
+        scratch buffer, valid until the next apply_material() call.
         """
         face_rgb = face_rgba[:, :, :3].astype(np.float32)
-        alpha    = face_rgba[:, :, 3:].astype(np.float32) / 255.0  # (H,W,1)
         mat      = material_rgb.astype(np.float32)
 
         # Luminance of the face art drives how much of the material shows through
         lum = face_rgb.mean(axis=2, keepdims=True) / 255.0         # (H,W,1)
 
-        colored = np.clip(mat * lum, 0, 255).astype(np.uint8)
-
-        result = np.zeros((self.h, self.w, 4), dtype=np.uint8)
-        result[:, :, :3] = colored
+        result = getattr(self, '_mat_buf', None)
+        if result is None:
+            result = self._mat_buf = np.empty((self.h, self.w, 4), dtype=np.uint8)
+        result[:, :, :3] = np.clip(mat * lum, 0, 255).astype(np.uint8)
         result[:, :,  3] = face_rgba[:, :, 3]
         return result
 
@@ -65,7 +65,12 @@ class Renderer:
           • ((H,W,4) ndarray, 'add')  — additive blend (good for particles/glow)
           • None               — skipped
         """
-        out = base.astype(np.float32)
+        # Persistent float32 accumulator — avoids a full-frame float alloc per
+        # call (this runs once per panel per frame).
+        out = getattr(self, '_comp_buf', None)
+        if out is None or out.shape != base.shape:
+            out = self._comp_buf = np.empty(base.shape, dtype=np.float32)
+        np.copyto(out, base)
 
         for item in layers:
             if item is None:
@@ -83,11 +88,14 @@ class Renderer:
             a   = layer[:, :, 3:].astype(np.float32) / 255.0  # (H,W,1)
 
             if mode == 'add':
-                out = np.clip(out + rgb * a, 0, 255)
+                out += rgb * a
+                np.clip(out, 0, 255, out=out)
             else:
-                out = out * (1.0 - a) + rgb * a
+                out *= (1.0 - a)
+                out += rgb * a
 
-        return np.clip(out, 0, 255).astype(np.uint8)
+        np.clip(out, 0, 255, out=out)
+        return out.astype(np.uint8)
 
     def sub_renderer(self, width: int, height: int) -> 'Renderer':
         """Return a Renderer instance for a sub-canvas of the given size.

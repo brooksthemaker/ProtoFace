@@ -31,23 +31,51 @@ def _shift_int(arr: np.ndarray, dy: int, dx: int) -> np.ndarray:
     return arr[ys[:, None], xs[None, :]]
 
 
+# Reusable float32 scratch buffers for _shift_clip, keyed by frame shape.
+# Rendering is single-threaded per frame, so sharing them is safe and avoids
+# re-allocating several full-frame float arrays every tick.
+_shift_scratch: dict[tuple, tuple[np.ndarray, np.ndarray]] = {}
+
+
 def _shift_clip(arr: np.ndarray, dy: float, dx: float) -> np.ndarray:
     """Sub-pixel shift by (dy, dx) with edge-clamped borders (no wrap).
 
     Fractional offsets are bilinearly interpolated so motion glides smoothly
-    between pixels instead of jumping a whole pixel at a time.
+    between pixels instead of jumping a whole pixel at a time. The bilinear
+    blend is separable, so it runs as two 1-D lerp passes (rows, then columns)
+    into preallocated scratch buffers instead of four full-frame taps.
     """
     iy, ix = int(math.floor(dy)), int(math.floor(dx))
     fy, fx = dy - iy, dx - ix
     if fy == 0.0 and fx == 0.0:
         return _shift_int(arr, iy, ix)
-    base = arr.astype(np.float32)
-    a = _shift_int(base, iy,     ix)
-    b = _shift_int(base, iy,     ix + 1)
-    c = _shift_int(base, iy + 1, ix)
-    d = _shift_int(base, iy + 1, ix + 1)
-    out = (a * ((1 - fy) * (1 - fx)) + b * ((1 - fy) * fx)
-           + c * (fy * (1 - fx)) + d * (fy * fx))
+
+    bufs = _shift_scratch.get(arr.shape)
+    if bufs is None:
+        bufs = (np.empty(arr.shape, np.float32), np.empty(arr.shape, np.float32))
+        _shift_scratch[arr.shape] = bufs
+    tmp, out = bufs
+
+    h, w = arr.shape[:2]
+
+    # Vertical pass: lerp between the frame shifted iy and iy+1 rows.
+    if fy == 0.0:
+        tmp[:] = arr[np.clip(np.arange(h) - iy, 0, h - 1)]
+    else:
+        ys0 = np.clip(np.arange(h) - iy,     0, h - 1)
+        ys1 = np.clip(np.arange(h) - iy - 1, 0, h - 1)
+        np.multiply(arr[ys0], np.float32(1.0 - fy), out=tmp)
+        tmp += arr[ys1] * np.float32(fy)
+
+    # Horizontal pass: same lerp across columns of the vertical result.
+    if fx == 0.0:
+        out[:] = tmp[:, np.clip(np.arange(w) - ix, 0, w - 1)]
+    else:
+        xs0 = np.clip(np.arange(w) - ix,     0, w - 1)
+        xs1 = np.clip(np.arange(w) - ix - 1, 0, w - 1)
+        np.multiply(tmp[:, xs0], np.float32(1.0 - fx), out=out)
+        out += tmp[:, xs1] * np.float32(fx)
+
     return np.clip(out, 0, 255).astype(arr.dtype)
 
 
@@ -211,11 +239,14 @@ class FaceLoader:
                 frame, self._mouth_open_img, self._mouth, mo)
 
         # 4. Wiggle + gyro offset
+        # .get() with the same defaults state.py uses: a partial wiggle: dict in
+        # config (e.g. only speed set) must not KeyError every frame.
         cfg_w = state.wiggle_cfg
-        dx = cfg_w['amplitude_x'] * math.sin(
-            2 * math.pi * cfg_w['speed'] * state.time)
-        dy = cfg_w['amplitude_y'] * math.sin(
-            2 * math.pi * cfg_w['speed'] * state.time * 1.3)
+        spd = cfg_w.get('speed', 0.3)
+        dx = cfg_w.get('amplitude_x', 2.0) * math.sin(
+            2 * math.pi * spd * state.time)
+        dy = cfg_w.get('amplitude_y', 1.0) * math.sin(
+            2 * math.pi * spd * state.time * 1.3)
         gx, gy = state.gyro_offset
         shift_x = dx + gx
         shift_y = dy + gy
