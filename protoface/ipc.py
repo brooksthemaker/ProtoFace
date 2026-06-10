@@ -170,6 +170,11 @@ class IpcServer:
             while self._running:
                 try:
                     chunk = conn.recv(4096)
+                except socket.timeout:
+                    # Idle is fine — ProtoHUD holds one persistent connection
+                    # and may go minutes between commands. Closing here made
+                    # the first command after idle vanish into an EPIPE.
+                    continue
                 except OSError:
                     break
                 if not chunk:
