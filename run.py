@@ -259,6 +259,17 @@ def main():
     # ── Master canvas ─────────────────────────────────────────────────────────
     canvas = np.zeros((canvas_h, canvas_w, 3), dtype=np.uint8)
 
+    # Constant per-panel background layers — composite() never mutates its
+    # base, so build each once instead of reallocating every frame.
+    for p in panels:
+        _, _, w, h = p['region']
+        p['bg'] = renderer.sub_renderer(w, h).solid_layer(bg_color)
+
+    # Brightness LUT (uint8 → uint8), rebuilt only when brightness changes.
+    # Replaces the per-frame float64 full-frame multiply.
+    bright_lut: np.ndarray | None = None
+    bright_lut_for = -1
+
     # ── Solo terminal controls (no-op without a TTY, e.g. under systemd) ───────
     keyboard     = KeyReader()
     keyboard.start()
@@ -414,7 +425,7 @@ def main():
                 # Sub-canvas renderer (uses cached per-panel size)
                 sub_renderer = renderer.sub_renderer(w, h)
 
-                bg  = sub_renderer.solid_layer(bg_color)
+                bg  = p['bg']
                 mat = p['material'][0].get_frame()
 
                 gif_frame = p['gif'].get_frame()
@@ -433,7 +444,11 @@ def main():
                 frame = sub_renderer.composite(bg, layers)
 
                 if brightness < 255:
-                    frame = (frame * (brightness / 255.0)).astype(np.uint8)
+                    if bright_lut_for != brightness:
+                        bright_lut = (np.arange(256) *
+                                      (brightness / 255.0)).astype(np.uint8)
+                        bright_lut_for = brightness
+                    frame = np.take(bright_lut, frame)
 
                 canvas[y:y+h, x:x+w] = frame[:, :, :3]
 
