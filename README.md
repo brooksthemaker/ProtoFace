@@ -1,6 +1,6 @@
 # Protoface
 
-A Python LED face display daemon for the Raspberry Pi Compute Module 5. Drives HUB75 RGB matrix panels through the [Adafruit Triple LED Matrix Bonnet](https://www.adafruit.com/product/6358) using Adafruit's PIO-based [Piomatter](https://github.com/adafruit/Adafruit_Blinka_Raspberry_Pi5_Piomatter) driver, with per-panel sprite animations, scrolling materials, and multi-layer particle effects. Communicates with [ProtoHUD](https://github.com/brooksthemaker/ProtoHUD) over a Unix socket and POSIX shared memory.
+A Python LED face display daemon for the Raspberry Pi Compute Module 5. Drives HUB75 RGB matrix panels through the [Adafruit Triple LED Matrix Bonnet](https://www.adafruit.com/product/6358) using Adafruit's PIO-based [Piomatter](https://github.com/adafruit/Adafruit_Blinka_Raspberry_Pi5_Piomatter) driver, with per-panel sprite animations, solid/gradient/scrolling materials, multi-layer particle effects, and autonomous reactions (expression-coupled mood effects, procedural eye animations). Communicates with [ProtoHUD](https://github.com/brooksthemaker/ProtoHUD) over a Unix socket and POSIX shared memory, and reads the same `config.json` face format as ProtoHUD's editor.
 
 > **Platform note:** The CM5 (Pi 5 / RP1 family) cannot run hzeller's `rpi-rgb-led-matrix` library — its GPIO can't be bit-banged the way that library expects. Protoface drives the panels via Piomatter, which uses the RP1's PIO state machines. A CM4 would need a different driver; this build targets the CM5.
 
@@ -270,20 +270,39 @@ faces/
     happy.png  angry.png  sad.png  surprised.png
     blink.png          eye-closed frame
     mouth_open.png     mouth-open frame (blended by mic volume)
-    config.json        expressions map + eye/mouth hit-boxes
+    mouth_small.png  mouth_smile.png  mouth_round.png   optional visemes
+    boop_snout.png  boop_left.png  boop_right.png  boop_both.png  optional boop faces
+    config.json        expressions map + eye/mouth regions + fit settings
 ```
 
-`config.json` defines blendable regions (optional — without it the whole sprite swaps):
+`config.json` defines blendable regions and fit settings (all optional — without
+it the whole sprite swaps). The schema is compatible with ProtoHUD's face editor:
 
 ```json
 {
   "expressions": {"neutral": "neutral.png", "happy": "happy.png"},
   "blink": "blink.png",
-  "eye_left":  {"x": 10, "y": 8,  "w": 20, "h": 12},
+  "draw_size": [128, 64],
+  "fit": "contain",
+  "scale": 1.0,
+  "offset_x": 0,
+  "offset_y": 0,
+  "eye_left":  {"points": [[10, 8], [30, 8], [30, 20], [10, 20]]},
   "eye_right": {"x": 34, "y": 8,  "w": 20, "h": 12},
   "mouth":     {"x": 18, "y": 22, "w": 28, "h": 10}
 }
 ```
+
+- **Regions** (`eye_left` / `eye_right` / `mouth`) are either a rectangle
+  `{x, y, w, h}` or a free-form polygon `{"points": [[x, y], ...]}` (as written
+  by ProtoHUD's Eye Region tool). `draw_size` is the resolution the coordinates
+  are authored in; they're scaled to the panel.
+- **`fit`** is `stretch` (default), `contain`, or `cover`; **`scale`** is an
+  extra zoom and **`offset_x`/`offset_y`** nudge the art after scaling.
+- **Visemes** — if `mouth_small/smile/round.png` are present they can be
+  selected via the mouth region (default is the audio-driven `mouth_open.png`).
+- **Boop faces** — a `boop_<zone>.png` (snout/left/right/both) is shown instead
+  of the fallback expression while its boop zone is active (see `inputs.boop.zone`).
 
 Generate placeholder assets for all face folders:
 
@@ -297,15 +316,24 @@ python generate_assets.py
 
 ```
 1. Background       solid colour
-2. Material         PNG tiled to panel size, scrolled by (scroll_x × t, scroll_y × t)
-3. Face             expression PNG lerped with blink PNG in eye region,
-                    translated by gyro wiggle offset;
+2. Material         PNG / solid / gradient / zone, scrolled by (scroll_x × t, scroll_y × t)
+3. Face             expression (or boop-reaction face) PNG lerped with blink PNG
+                    in the eye region (rect or polygon), mouth viseme blended by
+                    mic volume, translated by gyro/wiggle offset;
                     face luminance × material = final colour
+                    (or the art's own RGB when "use drawn colours" is on)
+                    — a rapid-boop eye animation replaces the face when active
 4. Particles        RGBA multi-layer compositor; additive or normal blend
-5. Output           HUB75 via Piomatter / RP1 PIO (Pi) or pygame preview (desktop);
-                    G→B→R colour correction applied at the panel boundary
+                    (suppressed during GIF playback and eye animations)
+5. Output           per-panel flip_x/flip_y, then HUB75 via Piomatter / RP1 PIO
+                    (Pi) or pygame preview (desktop); G→B→R colour correction
    + Shared memory  128×32 RGB written to /dev/shm/protoface_frame
 ```
+
+**Autonomous reactions** (`behaviors:` in `config.yaml`, off by default): with
+`expression_effects` the particle effect follows the expression (angry→fire,
+happy→celebration, sad→rain, shocked/surprised→galaxy); with `eye_trigger` a
+burst of boops takes the panels over with a procedural eye animation.
 
 ---
 
@@ -326,12 +354,26 @@ Enable the panel preview in the ProtoHUD menu: **Menu → Face → Panel Preview
 
 | Command | Fields | Description |
 |---------|--------|-------------|
-| `set_effect` | `effect_id` 0–15 | Switch particle effect (0=none, 1–7=built-ins, 8–15=presets) |
+| `set_effect` | `effect_id` 0–22 (`p1`/`p2` accepted, ignored) | Switch particle effect (0=none, 1–7=built-ins, 8+=presets) |
 | `set_effect` | `layers: [...]` | Set arbitrary multi-layer stack |
-| `set_color` | `r g b layer` | Set material colour |
+| `set_color` | `r g b` (`layer` accepted, ignored) | Set a flat material colour |
+| `set_face` | `face_id` | Select expression by index |
 | `set_brightness` | `value` 0–255 | Panel brightness (applied in the render pipeline) |
 | `play_gif` | `gif_id` | Play GIF by index |
-| `set_palette` | `palette_id` | Switch colour palette |
+| `set_palette` | `palette_id` | Colour preset (same table as `set_menu_item` 8) |
+| `set_menu_item` | `menu_index` `value` | Menu control (see below) |
+| `request_status` / `release_control` / `save_config` / `shutdown` | — | Status / autonomous mode / persist / clean exit |
+
+**`set_menu_item` indices** (mirror ProtoHUD's Protoface menu):
+
+| Index | Meaning |
+|-------|---------|
+| 0 | Face index (same as `set_face`) |
+| 3 | Microphone on/off |
+| 5 | Touch/boop sensor on/off |
+| 8 | Material colour preset **0–33** — solids, gradient presets, and pride-flag gradients (see `protoface/ipc.py` `_MATERIAL_COLOR_MAP`) |
+| 9 | "Use drawn colours" — draw the art's own RGB instead of tinting with the material |
+| 2, 4, 6, 7, 12 | Teensy/ProtoTracer-only (accent brightness, mic level, spectrum mirror, face size, fan speed) — accepted, mostly no-ops |
 
 ### Startup order
 
@@ -367,9 +409,11 @@ requirements.txt
 
 protoface/
   renderer.py               — layer compositor (apply_material, composite, sub_renderer)
-  face.py                   — sprite loader; blink/expression/wiggle animator
-  material.py               — solid, PNG, scrolling material
-  particles.py              — multi-layer ParticleSystem + 7 built-in effects
+  face.py                   — sprite loader; blink/expression/wiggle/viseme/boop animator
+  material.py               — solid, PNG, gradient, and zoned materials
+  particles.py              — multi-layer ParticleSystem + built-in effects
+  eye_anim.py               — procedural "animated eye" reactions (spiral/rings/…)
+  reactions.py              — expression-coupled mood effects + rapid-boop trigger
   gif_player.py             — GIF decoder + per-frame timing
   state.py                  — FaceState dataclass (expression, blink, audio, gyro)
   shm_writer.py             — writes the canvas as RGB to /dev/shm/protoface_frame

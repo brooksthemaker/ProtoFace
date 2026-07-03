@@ -30,7 +30,21 @@ a numeric ID — any structure accepted by ParticleSystem.set_effect() works.
 set_face face_id is the 0-based index of an expression in the active face's
 loaded set (order from the face's config.json). Out-of-range IDs are ignored.
 
-set_menu_item menu_index 8 → material colour preset (matches ProtoTracer list).
+set_menu_item menu_index (mirrors ProtoHUD's Protoface / ProtoTracer menus):
+    0  → face index (same effect as set_face)
+    2  → accent LED brightness   (Teensy-only; accepted, no-op here)
+    3  → microphone on/off       (0/1)
+    4  → mic level               (0-10)
+    5  → touch/boop sensor on/off (0/1)
+    6  → spectrum mirror         (Teensy-only; accepted, no-op here)
+    7  → face size               (0-10; accepted, no-op here)
+    8  → material colour preset  (see _MATERIAL_COLOR_MAP, index 0-33)
+    9  → "use drawn colours" — draw each expression's own RGB art instead of
+         tinting it with the material (0/1)
+    12 → fan speed               (Teensy-only; accepted, no-op here)
+Unknown indices are accepted and ignored rather than raising.
+
+set_palette palette_id maps through the same table as menu_index 8.
 """
 
 from __future__ import annotations
@@ -76,7 +90,11 @@ _EFFECT_MAP: dict[int, str | dict] = {
     22: {'preset': 'night_sky'},
 }
 
+# Material colour presets (set_menu_item menu_index 8).  Mirrors ProtoHUD's
+# NativeFaceController::preset_material and the pf_mats / pf_pride tables in
+# build_face_display.cpp — keep the ordering in lock-step with the HUD menu.
 _MATERIAL_COLOR_MAP = {
+    # Solids
     0:  'teal',
     1:  'solid:255,220,0',
     2:  'solid:255,140,0',
@@ -89,6 +107,30 @@ _MATERIAL_COLOR_MAP = {
     9:  'cool',
     10: 'warm',
     11: 'solid:0,0,0',
+    # Multi-colour gradient presets (horizontal smooth blends, static)
+    12: 'gradient:h:s:0:FF8C00-FF3D7F-8A2BE2',   # Sunset
+    13: 'gradient:h:s:0:00E5FF-0077FF-001F7F',   # Ocean
+    14: 'gradient:h:s:0:7CFF6B-1E9E3C-0B3D1A',   # Forest
+    15: 'gradient:h:s:0:FFE000-FF7A00-E01E1E',   # Fire
+    16: 'gradient:h:s:0:00FFA3-00D0FF-B14BFF',   # Aurora
+    17: 'gradient:h:s:0:2A0A0A-C81E00-FF8C00',   # Lava
+    18: 'gradient:h:s:0:2B0B5E-7A1EB4-FF4FD8',   # Galaxy
+    19: 'gradient:h:s:0:FFB3BA-BAE1FF-BAFFC9',   # Pastel
+    20: 'gradient:h:s:0:FF4FA3-FFD24F-4FC3FF',   # Candy
+    21: 'gradient:h:s:0:AEFF00-00FFB3-00A3FF',   # Toxic
+    # Pride flags (vertical smooth gradients, top→bottom stripes)
+    22: 'gradient:v:s:0:E40303-FF8C00-FFED00-008026-004DFF-750787',                                    # Rainbow
+    23: 'gradient:v:s:0:000000-613915-5BCEFA-F5A9B8-FFFFFF-E40303-FF8C00-FFED00-008026-004DFF-750787',  # Progress
+    24: 'gradient:v:s:0:5BCEFA-F5A9B8-FFFFFF-F5A9B8-5BCEFA',                                            # Trans
+    25: 'gradient:v:s:0:D60270-D60270-9B4F96-0038A8-0038A8',                                            # Bisexual
+    26: 'gradient:v:s:0:FF218C-FFD800-21B1FF',                                                          # Pansexual
+    27: 'gradient:v:s:0:D52D00-FF9A56-FFFFFF-D362A4-A30262',                                            # Lesbian
+    28: 'gradient:v:s:0:FCF434-FFFFFF-9C59D1-2C2C2C',                                                   # Nonbinary
+    29: 'gradient:v:s:0:000000-A3A3A3-FFFFFF-800080',                                                   # Asexual
+    30: 'gradient:v:s:0:FF75A2-FFFFFF-BE18D6-000000-333EBD',                                            # Genderfluid
+    31: 'gradient:v:s:0:B57EDC-FFFFFF-4A8123',                                                          # Genderqueer
+    32: 'gradient:v:s:0:3DA542-A7D379-FFFFFF-A9A9A9-000000',                                            # Aromantic
+    33: 'gradient:v:s:0:FFD800-7902AA-FFD800',                                                          # Intersex
 }
 
 
@@ -200,12 +242,17 @@ class IpcServer:
             r = int(msg.get('r', 0))
             g = int(msg.get('g', 0))
             b = int(msg.get('b', 0))
+            # 'layer' is accepted for wire-compatibility with ProtoHUD; the
+            # Protoface renderer has a single material layer so it's a no-op.
             for p in self._panels:
                 p['state'].set_custom_color(r, g, b)
             self._track(material=f'solid:{r},{g},{b}')
 
         elif cmd == 'set_effect':
             # Accept either a numeric effect_id or a raw 'layers' list/dict.
+            # 'p1'/'p2' are accepted for wire-compatibility with ProtoHUD's
+            # set_effect(effect_id, p1, p2); the Protoface presets don't take
+            # per-command params, so they're ignored.
             if 'layers' in msg:
                 effect_cfg = {'layers': msg['layers']}
             elif 'effect_id' in msg:
@@ -216,6 +263,9 @@ class IpcServer:
 
             for p in self._panels:
                 p['particles'].set_effect(effect_cfg)
+                # Remember it as the base effect so expression-coupled mood
+                # effects revert to it (see reactions / run.py).
+                p['state'].base_particles = effect_cfg
             self._track(particles=effect_cfg)
 
         elif cmd == 'set_face':
@@ -235,7 +285,14 @@ class IpcServer:
             self._track(brightness=value)
 
         elif cmd == 'set_palette':
-            pass  # no palette concept in Protoface
+            # Protoface has no separate palette concept — treat a palette id as
+            # a material colour preset (same table as menu_index 8).
+            pid = int(msg.get('palette_id', 0))
+            mat_name = _MATERIAL_COLOR_MAP.get(pid)
+            if mat_name is not None:
+                for p in self._panels:
+                    p['state'].request_material(mat_name)
+                self._track(material=mat_name)
 
         elif cmd == 'set_menu_item':
             idx   = int(msg.get('menu_index', 0))
@@ -245,6 +302,30 @@ class IpcServer:
                 for p in self._panels:
                     p['state'].request_material(mat_name)
                 self._track(material=mat_name)
+            elif idx == 9:
+                # "Use drawn colours" — draw the expression's own RGB art
+                # instead of tinting it with the material.
+                on = bool(value)
+                for p in self._panels:
+                    p['state'].face_colors = on
+                self._track(face_colors=on)
+            elif idx == 0:
+                for p in self._panels:
+                    p['state'].set_expression_by_index(value)
+            elif idx == 3:
+                for p in self._panels:
+                    p['state'].mic_enabled = bool(value)
+            elif idx == 4:
+                for p in self._panels:
+                    p['state'].mic_level = value
+            elif idx == 5:
+                for p in self._panels:
+                    p['state'].touch_enabled = bool(value)
+            elif idx == 7:
+                for p in self._panels:
+                    p['state'].face_size = value
+            # idx 2/6/12 (accent brightness, spectrum mirror, fan speed) are
+            # Teensy/ProtoTracer-only — accepted and ignored here.
 
         elif cmd == 'save_config':
             ok = False

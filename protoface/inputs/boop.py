@@ -25,6 +25,9 @@ class BoopSensor:
         self._debounce = boop_cfg.get('debounce', 0.05)
         self._expr     = boop_cfg.get('expression', 'surprised')
         self._duration = boop_cfg.get('duration', 2.0)
+        # Which boop-reaction face (boop_<zone>.png) this sensor triggers, when
+        # the active face folder provides one: snout | left | right | both.
+        self._zone     = boop_cfg.get('zone', 'snout')
 
         self._last_state   = False
         self._last_trigger = 0.0
@@ -81,6 +84,10 @@ class BoopSensor:
     @property
     def duration(self) -> float:
         return self._duration
+
+    @property
+    def zone(self) -> str:
+        return self._zone
 
     def close(self):
         if self._enabled and _AVAILABLE:

@@ -24,7 +24,10 @@ panels:
       blink:    {interval_min: 3.0, interval_max: 7.0, duration: 0.15}  #{0.5-60,0.5-60,0.05-0.5}
       expression_fade: 0.3   #{0-2}
       mouth_sensitivity: 0.5 #{0-2}
-    material: {active: teal, scroll_x: 0.0, scroll_y: 0.0}   #{teal|rainbow|warm|cool|solid:RGB, -30-30, -30-30}
+    # active: teal|rainbow|warm|cool | solid:R,G,B | gradient:<h|v>:<s|b>:<speed>:HEX-HEX-... | zone:a|b
+    # ProtoHUD's Material Color menu maps to indices 0-33 (solids, gradient
+    # presets, and pride-flag gradients) — see protoface/ipc.py _MATERIAL_COLOR_MAP.
+    material: {active: teal, scroll_x: 0.0, scroll_y: 0.0}   #{-30-30, -30-30}
     particles: {active: none}   #{none|effect|preset|layers}
 
   - name: face_right
@@ -107,8 +110,28 @@ inputs:
     enabled: false       #{true|false}
     gpio_pin: 17         #{0-27, avoid matrix pins}
     expression: surprised #{expression name}
+    zone: snout          #{snout|left|right|both}  boop_<zone>.png overrides the expression when present
     duration: 2.0        #{>0}
     debounce: 0.05       #{0.01-0.5}
+
+# ── Autonomous reactions (mirror ProtoHUD's native face controller) ───────────
+behaviors:
+  # Swap the particle effect to a mood preset as the face expression changes
+  # (angry→fire, happy→celebration, sad→rain, shocked/surprised→galaxy).
+  # Neutral / unmapped expressions restore the panel's base effect.
+  expression_effects:
+    enabled: false       #{true|false}
+  # Rapid-boop "animated eyes" easter egg: boop the sensor `count` times within
+  # `window_s` and a procedural eye animation takes over the panels.
+  eye_trigger:
+    enabled: false       #{true|false}
+    count: 3             #{>=1}
+    window_s: 4.0        #{>0}
+    anim: random         #{spiral|rings|hearts|swirl|starburst|glitch|random}
+    speed: 1.0           #{>0}   animation-rate multiplier
+    size: 1.0            #{>0}   feature-scale multiplier
+    duration: 2.5        #{>0}   seconds the animation plays
+    color: [0, 220, 180] #{0-255,0-255,0-255}
 
 gif:
   folder: gifs           #{path}

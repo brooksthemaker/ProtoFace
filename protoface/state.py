@@ -25,6 +25,7 @@ class FaceState:
         self._boop_remaining = 0.0
         self._boop_expr      = 'neutral'
         self._boop_prev      = 'neutral'
+        self.boop_face       = None   # boop-reaction face zone name, or None
 
         # Expression crossfade
         self.expression      = expression_names[0] if expression_names else 'neutral'
@@ -63,6 +64,31 @@ class FaceState:
         # Brightness (0-255, applied as a scale factor in renderer)
         self.brightness = 255
 
+        # Menu-item toggles / values (set over IPC by ProtoHUD; see ipc.py)
+        self.face_colors   = False   # draw the expression's own RGB art (no material tint)
+        self.mic_enabled   = True    # microphone reactivity on/off
+        self.mic_level     = 5       # 0-10 mic level (informational)
+        self.touch_enabled = True    # boop/touch sensor on/off
+        self.face_size     = 5       # 0-10 face size (informational)
+
+        # Base particle effect (what mood/expression effects revert to). Set by
+        # run.py at startup and by IPC set_effect.
+        self.base_particles = None
+
+        # Procedural "animated eye" reaction (rapid-boop easter egg). While
+        # eye_anim_remaining > 0 the panels render the animation instead of the
+        # face and particles are suppressed.
+        self.eye_anim_active    = False
+        self.eye_anim_type      = 'spiral'
+        self.eye_anim_t         = 0.0
+        self.eye_anim_remaining = 0.0
+        self.eye_anim_speed     = 1.0
+        self.eye_anim_size      = 1.0
+        self.eye_anim_color     = (0, 220, 180)
+
+        # Mouth viseme shape selection (default = the audio-driven open mouth).
+        self.mouth_shape = 'mouth_open'
+
         # IPC requests (consumed once by run.py each tick)
         self.custom_color: tuple[int,int,int] | None = None  # (r,g,b) or None
         self.gif_request:  int | None = None                 # gif_id index or None
@@ -100,13 +126,30 @@ class FaceState:
         self._expr_idx = (self._expr_idx - 1) % len(self._expressions)
         self.set_expression(self._expressions[self._expr_idx])
 
-    def trigger_boop(self, expression: str, duration: float):
-        """Override expression for *duration* seconds, then revert."""
+    def trigger_boop(self, expression: str, duration: float, zone: str | None = None):
+        """Override expression for *duration* seconds, then revert.
+
+        *zone* (snout / left / right / both) selects a dedicated boop-reaction
+        face (boop_<zone>.png) when the active face folder provides one; the
+        face loader falls back to *expression* when it doesn't.
+        """
         if self._boop_remaining <= 0:
             self._boop_prev = self.expression
         self._boop_expr      = expression
         self._boop_remaining = duration
+        self.boop_face       = zone
         self.set_expression(expression)
+
+    def trigger_eye_animation(self, anim_type: str, speed: float, size: float,
+                              color, duration: float):
+        """Take over the panels with a procedural eye animation for *duration*."""
+        self.eye_anim_type      = anim_type
+        self.eye_anim_speed     = speed
+        self.eye_anim_size      = size
+        self.eye_anim_color     = tuple(int(c) for c in color)[:3]
+        self.eye_anim_remaining = duration
+        self.eye_anim_t         = 0.0
+        self.eye_anim_active    = duration > 0.0
 
     def trigger_blink(self):
         """Force a blink immediately."""
@@ -127,7 +170,16 @@ class FaceState:
         if self._boop_remaining > 0:
             self._boop_remaining -= dt
             if self._boop_remaining <= 0:
+                self.boop_face = None
                 self.set_expression(self._boop_prev)
+
+        # Eye-animation timer
+        if self.eye_anim_active:
+            self.eye_anim_t         += dt
+            self.eye_anim_remaining -= dt
+            if self.eye_anim_remaining <= 0:
+                self.eye_anim_active    = False
+                self.eye_anim_remaining = 0.0
 
         # Blink state machine
         self._update_blink(dt)

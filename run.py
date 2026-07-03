@@ -32,6 +32,8 @@ from protoface.particles  import ParticleSystem
 from protoface.gif_player import GifPlayer
 from protoface.state      import FaceState
 from protoface.ipc        import IpcServer
+from protoface.reactions  import ReactionController
+from protoface.eye_anim   import render_eye_animation
 from protoface.shm_writer import ShmWriter
 from protoface.inputs.microphone import Microphone
 from protoface.inputs.gyro       import Gyro
@@ -128,9 +130,12 @@ def _panel_from_cfg(pcfg: dict) -> dict:
         'name':     pcfg.get('name', 'panel'),
         'region':   (x, y, w, h),
         'mirror_of': pcfg.get('mirror_of'),   # if set, this panel = source flipped
+        'flip_x':   bool(pcfg.get('flip_x', False)),  # mirror slice left↔right at output
+        'flip_y':   bool(pcfg.get('flip_y', False)),  # mirror slice top↔bottom at output
         'face':     face,
         'material': [mat],     # wrapped in list so IPC can swap
         'particles': particles,
+        'particles_cfg': part_cfg,   # base effect for mood/expression reactions
         'gif':      gif,
         'state':    state,
         'face_cfg': face_cfg,
@@ -200,6 +205,9 @@ def main():
     gyro = Gyro(cfg)
     boop = BoopSensor(cfg)
 
+    # Autonomous reactions: expression-coupled mood effects + rapid-boop eyes.
+    reactions = ReactionController(cfg)
+
     out  = build_output(cfg)
 
     primary_state = panels[0]['state']   # panel[0] is the primary IPC/state handle
@@ -227,6 +235,11 @@ def main():
     if particles_override:
         for p in panels:
             p['particles'].set_effect(final_particles)
+
+    # Remember each panel's base particle effect so expression-coupled mood
+    # effects can revert to it when the face returns to neutral.
+    for p in panels:
+        p['state'].base_particles = final_particles if particles_override else p['particles_cfg']
 
     # material
     final_material = (_first('material', {}) or {}).get('active', 'teal')
@@ -345,11 +358,26 @@ def main():
             mic.update(dt, sensitivity=panels[0]['face_cfg'].get('mouth_sensitivity', 0.5))
             gyro.update(dt)
 
-            vol        = mic.volume
-            mouth_open = mic.mouth_open
-            spectrum   = mic.spectrum.tolist()
+            # Microphone reactivity can be toggled off over IPC (menu item 3).
+            if primary_state.mic_enabled:
+                vol        = mic.volume
+                mouth_open = mic.mouth_open
+                spectrum   = mic.spectrum.tolist()
+            else:
+                vol        = 0.0
+                mouth_open = 0.0
+                spectrum   = []
             gyro_off   = gyro.get_offset()
             booped     = boop.is_booped()
+
+            # Rapid-boop "animated eyes" easter egg (mirrors ProtoHUD): several
+            # boops within the window take the panels over with an eye animation.
+            if booped and reactions.register_boop(now):
+                anim = reactions.pick_anim()
+                for p in panels:
+                    p['state'].trigger_eye_animation(
+                        anim, reactions.eye_speed, reactions.eye_size,
+                        reactions.eye_color, reactions.eye_duration)
 
             # ── Per-panel update ──────────────────────────────────────────────
             for p in panels:
@@ -361,8 +389,8 @@ def main():
                 s.spectrum     = spectrum
                 s.gyro_offset  = gyro_off
 
-                if booped:
-                    s.trigger_boop(boop.expression, boop.duration)
+                if booped and s.touch_enabled:
+                    s.trigger_boop(boop.expression, boop.duration, zone=boop.zone)
 
                 # Consume IPC requests (only primary state holds IPC reqs)
                 ipc_reqs = s.consume_ipc_requests()
@@ -383,6 +411,10 @@ def main():
                 s.update(dt)
                 p['material'][0].update(dt)
                 p['particles'].update(dt)
+
+            # Expression-coupled mood effects: swap the particle effect to match
+            # each panel's current expression (no-op unless enabled in config).
+            reactions.apply_mood_effects(panels)
 
             # GIF auto-cycle (applies to all panels' gif players)
             if gif_auto and gif_files:
@@ -417,25 +449,48 @@ def main():
                 bg  = sub_renderer.solid_layer(bg_color)
                 mat = p['material'][0].get_frame()
 
-                gif_frame = p['gif'].get_frame()
-                if gif_frame is not None:
+                gif_frame   = p['gif'].get_frame()
+                gif_playing = gif_frame is not None
+
+                if s.eye_anim_active:
+                    # Procedural eye animation takes over the whole panel.
+                    eye_rgb = render_eye_animation(
+                        s.eye_anim_type, s.eye_anim_t, w, h,
+                        speed=s.eye_anim_speed, size=s.eye_anim_size,
+                        rgb=s.eye_anim_color)
+                    alpha = np.full((h, w, 1), 255, dtype=np.uint8)
+                    face_layer = np.concatenate([eye_rgb, alpha], axis=2)
+                elif gif_playing:
                     face_layer = gif_frame
                 else:
-                    face_rgba  = p['face'].get_frame(s)
-                    face_layer = sub_renderer.apply_material(face_rgba, mat)
-
-                parts = p['particles'].render()  # RGBA ndarray or None
+                    face_rgba = p['face'].get_frame(s)
+                    if s.face_colors:
+                        # "Use drawn colours": show the art's own RGB instead of
+                        # tinting it with the material.
+                        face_layer = face_rgba
+                    else:
+                        face_layer = sub_renderer.apply_material(face_rgba, mat)
 
                 layers = [face_layer]
-                if parts is not None:
-                    layers.append(parts)
+                # Particles are suppressed during GIF playback and eye
+                # animations (mirrors ProtoHUD).
+                if not gif_playing and not s.eye_anim_active:
+                    parts = p['particles'].render()  # (RGBA, blend) or None
+                    if parts is not None:
+                        layers.append(parts)
 
                 frame = sub_renderer.composite(bg, layers)
 
                 if brightness < 255:
                     frame = (frame * (brightness / 255.0)).astype(np.uint8)
 
-                canvas[y:y+h, x:x+w] = frame[:, :, :3]
+                # Per-panel physical flips (mirror the slice at output).
+                sub = frame[:, :, :3]
+                if p.get('flip_x'):
+                    sub = np.fliplr(sub)
+                if p.get('flip_y'):
+                    sub = np.flipud(sub)
+                canvas[y:y+h, x:x+w] = sub
 
             # ── Mirror pass: panels with mirror_of copy a source region, flipped
             region_by_name = {p['name']: p['region'] for p in panels}
