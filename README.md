@@ -312,6 +312,37 @@ python generate_assets.py
 
 ---
 
+## Face Editor
+
+A standalone pixel-art editor (pygame) for authoring faces without ProtoHUD. It
+reads and writes the same `faces/<name>/` folders the renderer consumes, so what
+you draw is exactly what the panels show — the live preview is rendered through
+the real `FaceLoader` + `Renderer`, including polygon eye regions, `fit`/`scale`
+and material tint.
+
+```bash
+python editor.py                     # edit config.yaml's active face
+python editor.py main                # edit faces/main
+python editor.py faces/example_fox   # edit by path
+python editor.py --new myface --size 64x32
+```
+
+It is **edit-only** — a separate program from `run.py`, never imported by the
+render daemon.
+
+| | |
+|---|---|
+| **Draw tools** | Pencil `P`, Eraser `E`, Bucket fill `G`, Eyedropper `K` (or right-click), Line `L`, Rect `R` (Shift-drag = filled); brush sizes `1`–`4` |
+| **Colour** | palette swatches, current-colour hex field (click to type `RRGGBB`), eyedropper |
+| **Expressions** | click a name to edit it, `[` / `]` to cycle, **+ add expression** (copies the current one) |
+| **Regions** | pick `eyeL` / `eyeR` / `mouth`, then **rect** (drag a box) or **poly** (click vertices, click the first to close) — written as `{x,y,w,h}` or `{"points":[…]}` |
+| **Fit** | cycle `stretch` / `contain` / `cover`, adjust `scale` |
+| **History** | `Ctrl+Z` / `Ctrl+Y` undo/redo (per expression) |
+| **Save** | `Ctrl+S` → writes the PNGs + `config.json` |
+| **Preview** | live composited panel view; cycle the tint material, toggle blink playback and mouth-open |
+
+---
+
 ## Rendering Pipeline (per frame)
 
 ```
