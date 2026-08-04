@@ -36,6 +36,7 @@ from protoface.shm_writer import ShmWriter
 from protoface.inputs.microphone import Microphone
 from protoface.inputs.gyro       import Gyro
 from protoface.inputs.boop       import BoopSensor
+from protoface.inputs.coprocessor import ButtonCoprocessor
 from protoface.keyboard          import KeyReader
 from protoface.persistence       import LiveSettings, load_state, save_state
 
@@ -66,9 +67,19 @@ def build_output(cfg: dict):
     if disp.get('preview', True):
         from protoface.output.preview import PreviewOutput
         return PreviewOutput(cfg)
-    else:
-        from protoface.output.hub75 import HUB75Output
-        return HUB75Output(cfg)
+
+    # display.driver picks the HUB75 backend:
+    #   piomatter — RP1 PIO (Pi 5 / CM5 + Triple Matrix Bonnet)
+    #   hzeller   — rpi-rgb-led-matrix (Pi Zero 2W / 3 / 4 + classic bonnet)
+    #   auto      — piomatter when /dev/pio0 exists, else hzeller
+    driver = disp.get('driver', 'auto')
+    if driver == 'auto':
+        driver = 'piomatter' if os.path.exists('/dev/pio0') else 'hzeller'
+    if driver == 'hzeller':
+        from protoface.output.hub75_hzeller import HzellerOutput
+        return HzellerOutput(cfg)
+    from protoface.output.hub75 import HUB75Output
+    return HUB75Output(cfg)
 
 
 # ── Panel context builder ─────────────────────────────────────────────────────
@@ -199,6 +210,8 @@ def main():
     mic  = Microphone(cfg)
     gyro = Gyro(cfg)
     boop = BoopSensor(cfg)
+    coproc = ButtonCoprocessor(cfg)
+    coproc.start()
 
     out  = build_output(cfg)
 
@@ -300,46 +313,71 @@ def main():
                         for p in panels:
                             p['state'].prev_expression_cmd()
 
-            # ── Terminal key controls (solo mode on the panels) ───────────────
-            key = keyboard.get()
-            if key:
-                if key == 'q':   # not ESC: arrow/function keys send ESC sequences
+            # ── Solo controls (terminal keys + button coprocessor) ────────────
+            def do_action(action: str):
+                nonlocal running, face_color_i, effect_i
+                if action == 'quit':
                     running = False
-                elif key in ('c', 'v'):
-                    face_color_i = (face_color_i + (1 if key == 'c' else -1)) % len(FACE_COLORS)
+                elif action in ('next_color', 'prev_color'):
+                    face_color_i = (face_color_i + (1 if action == 'next_color' else -1)) % len(FACE_COLORS)
                     cname, (cr, cg, cb) = FACE_COLORS[face_color_i]
                     for p in panels:
                         _, _, pw, ph = p['region']
                         p['material'][0] = SolidMaterial(cr, cg, cb, pw, ph)
                     live.update(material=f'solid:{cr},{cg},{cb}')
                     print(f"[face] colour: {cname}")
-                elif key in ('x', 'z'):
-                    effect_i = (effect_i + (1 if key == 'x' else -1)) % len(EFFECTS)
+                elif action in ('next_effect', 'prev_effect'):
+                    effect_i = (effect_i + (1 if action == 'next_effect' else -1)) % len(EFFECTS)
                     for p in panels:
                         p['particles'].set_effect(EFFECTS[effect_i])
                     live.update(particles=EFFECTS[effect_i])
                     print(f"[fx] effect: {EFFECTS[effect_i]}")
-                elif key in ('e', 'w'):
+                elif action in ('next_expression', 'prev_expression'):
                     for p in panels:
-                        if key == 'e':
+                        if action == 'next_expression':
                             p['state'].next_expression()
                         else:
                             p['state'].prev_expression_cmd()
                     print(f"[expr] {panels[0]['state'].expression}")
-                elif key == 'b':
+                elif action == 'blink':
                     for p in panels:
                         p['state'].trigger_blink()
-                elif key == 's':
+                elif action == 'boop':
+                    for p in panels:
+                        p['state'].trigger_boop(boop.expression, boop.duration)
+                elif action == 'save':
                     if save_state(state_path, live.snapshot()):
                         print(f"[save] wrote {state_path}")
-                elif key in ('+', '='):
+                elif action == 'brightness_up':
                     primary_state.brightness = min(255, primary_state.brightness + 16)
                     live.update(brightness=primary_state.brightness)
                     print(f"[brightness] {primary_state.brightness}")
-                elif key in ('-', '_'):
+                elif action == 'brightness_down':
                     primary_state.brightness = max(16, primary_state.brightness - 16)
                     live.update(brightness=primary_state.brightness)
                     print(f"[brightness] {primary_state.brightness}")
+                else:
+                    print(f"[input] unknown action: {action!r}")
+
+            # ── Terminal key controls (solo mode on the panels) ───────────────
+            key = keyboard.get()
+            if key:
+                # 'q' not ESC: arrow/function keys send ESC sequences
+                action = {
+                    'q': 'quit',
+                    'c': 'next_color',      'v': 'prev_color',
+                    'x': 'next_effect',     'z': 'prev_effect',
+                    'e': 'next_expression', 'w': 'prev_expression',
+                    'b': 'blink',           's': 'save',
+                    '+': 'brightness_up',   '=': 'brightness_up',
+                    '-': 'brightness_down', '_': 'brightness_down',
+                }.get(key)
+                if action:
+                    do_action(action)
+
+            # ── Coprocessor buttons (mapped in inputs.coprocessor.buttons) ────
+            for action in coproc.get_actions():
+                do_action(action)
 
             # ── Shared inputs ─────────────────────────────────────────────────
             mic.update(dt, sensitivity=panels[0]['face_cfg'].get('mouth_sensitivity', 0.5))
@@ -417,8 +455,13 @@ def main():
                 bg  = sub_renderer.solid_layer(bg_color)
                 mat = p['material'][0].get_frame()
 
+                transient = s.get_transient_face()
                 gif_frame = p['gif'].get_frame()
-                if gif_frame is not None:
+                if transient is not None:
+                    # Editor preview (IPC preview_face) — material-tinted like
+                    # the face sprites it stands in for.
+                    face_layer = sub_renderer.apply_material(transient, mat)
+                elif gif_frame is not None:
                     face_layer = gif_frame
                 else:
                     face_rgba  = p['face'].get_frame(s)
@@ -468,6 +511,7 @@ def main():
         mic.close()
         gyro.close()
         boop.close()
+        coproc.close()
         print("Protoface stopped.")
 
 

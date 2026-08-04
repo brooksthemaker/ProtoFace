@@ -69,6 +69,11 @@ class FaceState:
         self.material_request: str | None = None             # material name or None
         self._ipc_release = False
 
+        # Transient face (pushed by the editor over IPC preview_face; replaces
+        # the rendered face for a few seconds — ProtoHUD's push_transient_face)
+        self.transient_face = None     # (H, W, 4) RGBA ndarray or None
+        self._transient_until = 0.0
+
     # ── Expression control ────────────────────────────────────────────────────
 
     def set_expression(self, name: str):
@@ -176,6 +181,23 @@ class FaceState:
 
     def release_ipc_control(self):
         self._ipc_release = True
+
+    def push_transient_face(self, frame, duration: float):
+        """Show *frame* ((H, W, 4) RGBA ndarray) instead of the face sprite for
+        *duration* seconds. Thread-safe enough for the IPC thread: both fields
+        are plain attribute stores and run.py only ever reads via
+        get_transient_face()."""
+        self._transient_until = time.monotonic() + max(0.0, float(duration))
+        self.transient_face   = frame
+
+    def get_transient_face(self):
+        """The active transient frame, or None (auto-expires)."""
+        if self.transient_face is None:
+            return None
+        if time.monotonic() >= self._transient_until:
+            self.transient_face = None
+            return None
+        return self.transient_face
 
     def consume_ipc_requests(self) -> dict:
         """Return and clear all pending IPC requests."""

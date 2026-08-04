@@ -13,6 +13,7 @@ Supported commands (JSON objects, one per line):
     {"cmd": "set_brightness", "value":200}
     {"cmd": "set_palette",    "palette_id":1}
     {"cmd": "set_menu_item",  "menu_index":8, "value":1}
+    {"cmd": "preview_face",   "w":64, "h":32, "rgba":"<base64>", "duration":10}
     {"cmd": "request_status"}
     {"cmd": "release_control"}
     {"cmd": "shutdown"}          # clean exit (used by ProtoHUD restart)
@@ -31,15 +32,24 @@ set_face face_id is the 0-based index of an expression in the active face's
 loaded set (order from the face's config.json). Out-of-range IDs are ignored.
 
 set_menu_item menu_index 8 → material colour preset (matches ProtoTracer list).
+
+preview_face pushes a transient face onto the panels for duration seconds
+(default 10): rgba is base64 of w*h*4 RGBA bytes, panel-sized (typically
+64×32). Sent by the face editor's "push to panels" preview — the analogue of
+ProtoHUD's NativeFaceController::push_transient_face. Panels whose size
+doesn't match simply skip it.
 """
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import socket
 import threading
 from typing import TYPE_CHECKING
+
+import numpy as np
 
 from .persistence import save_state
 
@@ -233,6 +243,23 @@ class IpcServer:
             for p in self._panels:
                 p['state'].brightness = value
             self._track(brightness=value)
+
+        elif cmd == 'preview_face':
+            w   = int(msg.get('w', 0))
+            h   = int(msg.get('h', 0))
+            dur = float(msg.get('duration', 10.0))
+            try:
+                raw = base64.b64decode(msg.get('rgba', ''), validate=True)
+            except (ValueError, TypeError):
+                raw = b''
+            ok = w > 0 and h > 0 and len(raw) == w * h * 4
+            if ok:
+                frame = np.frombuffer(raw, dtype=np.uint8).reshape(h, w, 4).copy()
+                for p in self._panels:
+                    _, _, pw, ph = p['region']
+                    if (pw, ph) == (w, h):
+                        p['state'].push_transient_face(frame, dur)
+            self._reply(conn, {'cmd': 'preview_face', 'ok': ok})
 
         elif cmd == 'set_palette':
             pass  # no palette concept in Protoface
