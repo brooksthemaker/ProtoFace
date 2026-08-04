@@ -277,6 +277,7 @@ def main():
     keyboard.start()
     face_color_i = 0
     effect_i     = 0
+    led_sync_timer = 0.0
     if sys.stdin.isatty():
         print("Solo controls: c/v colour  x/z effect  e/w expr  b blink  "
               "+/- bright  s save  q quit")
@@ -378,6 +379,22 @@ def main():
             # ── Coprocessor buttons (mapped in inputs.coprocessor.buttons) ────
             for action in coproc.get_actions():
                 do_action(action)
+
+            # ── Coprocessor boop pads → transient expressions (same path as
+            #    the GPIO boop sensor) ──────────────────────────────────────────
+            for expr, dur in coproc.get_boops():
+                for p in panels:
+                    p['state'].trigger_boop(expr, dur)
+
+            # ── Coprocessor LED zone: mirror the current material tint ────────
+            if coproc.enabled and coproc.led_sync == 'face_color':
+                led_sync_timer -= dt
+                if led_sync_timer <= 0:
+                    led_sync_timer = 2.0
+                    if coproc.connected:
+                        mrgb = panels[0]['material'][0].get_frame()
+                        mrgb = mrgb.reshape(-1, mrgb.shape[-1])[:, :3].mean(axis=0)
+                        coproc.led_solid(int(mrgb[0]), int(mrgb[1]), int(mrgb[2]))
 
             # ── Shared inputs ─────────────────────────────────────────────────
             mic.update(dt, sensitivity=panels[0]['face_cfg'].get('mouth_sensitivity', 0.5))

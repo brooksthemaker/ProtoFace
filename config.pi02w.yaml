@@ -95,6 +95,27 @@ inputs:
     #                next_effect prev_effect blink boop brightness_up
     #                brightness_down save quit
 
+    # TTP223 boop pads on the coprocessor's pre-assigned touch pins
+    # (standard Pico 2 / RP2350A: idx 0-4 = GP0, GP1, GP12, GP16, GP17;
+    # idx 5 = GP18 spare). Firmware streams "BOOP <idx> <1|0>"; an
+    # {expression: ...} pad triggers a transient expression like the GPIO
+    # boop sensor, a plain action string makes the pad an extra button.
+    boop_pads:
+      0: {expression: surprised, duration: 2.0}   # snout
+      1: {expression: happy,     duration: 2.0}   # cheek L
+      2: {expression: happy,     duration: 2.0}   # cheek R
+      3: {expression: angry,     duration: 2.0}   # top of head
+      4: {expression: sad,       duration: 2.0}   # chin
+
+    # Addressable LED zone (WS2812/APA102) on the coprocessor — accessory
+    # LEDs (fins/ears/scales). sync: face_color mirrors the current material
+    # tint onto the strip every ~2 s; off leaves the zone alone (drive it
+    # from the firmware's LEDP patterns instead).
+    led_zone:
+      sync: face_color   #{face_color|off}
+      count: 16          #{1-300} pixels in the zone
+      brightness: 128    #{0-255}
+
 gif:
   folder: gifs
   auto_cycle: false

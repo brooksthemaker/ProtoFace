@@ -11,11 +11,17 @@ Protocol (newline-delimited ASCII), MCU → Pi:
     HELLO proto-buttons v1 fw=<ver> n=<count>    # once on boot/connect
     BTN <id> SHORT                               # held < long_ms
     BTN <id> LONG                                # held >= long_ms (fires once)
+    BOOP <idx> <1|0>                             # TTP223/MPR121 touch pad edge
     PING                                         # heartbeat ~1 Hz
 Pi → MCU:
     PONG                                         # heartbeat ack
     CFG long_ms=<n>                              # retune long-press threshold
     LED <id> <0|1>                               # drive a switch backlight
+    LEDZ <r> <g> <b> [count]                     # addressable zone: solid fill
+    LEDP <mode> <r> <g> <b> <speed>              # zone pattern, animated on MCU
+                                                 #   0 off 1 solid 2 rainbow
+                                                 #   3 chase 4 breathe
+    LEDB <0-255>                                 # zone brightness
 
 The firmware stays "dumb about meaning": this module resolves <id> to an
 action name via inputs.coprocessor.buttons and hands the names to run.py,
@@ -35,6 +41,19 @@ Config (config.yaml):
           2: {short: next_effect,     long: prev_effect}
           3: {short: blink,           long: boop}
           4: {short: brightness_up,   long: brightness_down}
+        boop_pads:            # touch pad idx → transient expression or action
+          0: {expression: surprised, duration: 2.0}    # snout
+          1: {expression: happy,     duration: 2.0}    # cheek L
+          2: {expression: happy,     duration: 2.0}    # cheek R
+          3: next_effect                               # pad as an extra button
+        led_zone:             # addressable LED zone on the coprocessor
+          sync: face_color    # face_color = mirror the material colour | off
+          count: 16           # pixels in the zone (clamped by firmware)
+          brightness: 128     # 0-255
+
+Boop pads fire on touch-down only. An {expression: ...} pad triggers a
+transient expression through the same path as the GPIO boop sensor; a plain
+action string makes the pad behave like an extra button.
 
 Valid actions (run.py's solo-control set):
     next_expression prev_expression next_color prev_color next_effect
@@ -77,11 +96,27 @@ class ButtonCoprocessor:
                 val = {'short': val}
             self._map[int(key)] = val or {}
 
+        # Boop pad map: idx → {'expression': name, 'duration': s} (transient
+        # expression, like the GPIO boop sensor) or {'action': name} (the pad
+        # acts as an extra button). A bare string is shorthand for an action.
+        self._boop_map: dict[int, dict] = {}
+        for key, val in (c.get('boop_pads') or {}).items():
+            if isinstance(val, str):
+                val = {'action': val}
+            self._boop_map[int(key)] = val or {}
+
+        # LED zone sync config (LEDZ/LEDB pushed by run.py via led_solid()).
+        lz = c.get('led_zone') or {}
+        self.led_sync       = lz.get('sync', 'off')
+        self.led_count      = int(lz.get('count', 16))
+        self.led_brightness = int(lz.get('brightness', 128))
+
         self._ser        = None
         self._running    = False
         self._thread     = None
         self._lock       = threading.Lock()
         self._actions: list[str] = []
+        self._boops: list[tuple[str, float]] = []   # (expression, duration)
         self._connected  = False
         self._last_seen  = 0.0
         self._fw_banner  = ''
@@ -114,9 +149,34 @@ class ButtonCoprocessor:
             out, self._actions = self._actions, []
         return out
 
+    def get_boops(self) -> list[tuple[str, float]]:
+        """Drain pending boop-pad expression triggers as (expression, duration)
+        tuples (thread-safe, never blocks). Pads mapped to plain actions come
+        out of get_actions() instead."""
+        if not self.enabled:
+            return []
+        with self._lock:
+            out, self._boops = self._boops, []
+        return out
+
     def set_led(self, button_id: int, on: bool):
         """Drive a switch backlight on the coprocessor (best-effort)."""
         self._send(f'LED {int(button_id)} {1 if on else 0}')
+
+    # ── Addressable LED zone (WS2812/APA102 on the coprocessor) ───────────────
+
+    def led_solid(self, r: int, g: int, b: int, count: int | None = None):
+        """Fill the LED zone with a solid colour (0,0,0 = off)."""
+        n = self.led_count if count is None else int(count)
+        self._send(f'LEDZ {int(r)} {int(g)} {int(b)} {n}')
+
+    def led_pattern(self, mode: int, r: int, g: int, b: int, speed: int = 16):
+        """Run an MCU-side pattern: 0 off, 1 solid, 2 rainbow, 3 chase, 4 breathe."""
+        self._send(f'LEDP {int(mode)} {int(r)} {int(g)} {int(b)} {int(speed)}')
+
+    def led_set_brightness(self, value: int):
+        """Zone brightness 0-255 (APA102 also maps to its 5-bit global)."""
+        self._send(f'LEDB {max(0, min(255, int(value)))}')
 
     @property
     def connected(self) -> bool:
@@ -160,6 +220,8 @@ class ButtonCoprocessor:
             self._last_seen = time.monotonic()
             if self._long_ms is not None:
                 self._send(f'CFG long_ms={int(self._long_ms)}')
+            if self.led_sync != 'off':
+                self.led_set_brightness(self.led_brightness)
 
             try:
                 self._read_lines()
@@ -207,6 +269,25 @@ class ButtonCoprocessor:
                     self._actions.append(action)
             else:
                 print(f'[coproc] unmapped: BTN {btn_id} {parts[2]}')
+
+        elif parts[0] == 'BOOP' and len(parts) >= 3:
+            # Touch-down only; releases ("BOOP <idx> 0") are ignored in v1.
+            if parts[2] != '1':
+                return
+            try:
+                pad = int(parts[1])
+            except ValueError:
+                return
+            m = self._boop_map.get(pad)
+            if not m:
+                print(f'[coproc] unmapped: BOOP {pad}')
+            elif 'expression' in m:
+                with self._lock:
+                    self._boops.append(
+                        (m['expression'], float(m.get('duration', 2.0))))
+            elif 'action' in m:
+                with self._lock:
+                    self._actions.append(m['action'])
 
         elif parts[0] == 'PING':
             self._send('PONG')

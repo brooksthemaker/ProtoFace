@@ -136,6 +136,44 @@ After flashing, confirm the stable device path and point the config at it:
 ls -l /dev/serial/by-id/     # …ProtoHUD_Buttons…-if00 (serial suffix is globbed)
 ```
 
+### Standard Pico 2 (RP2350A) pin plan
+
+The plain `coproc` firmware build already includes the touch pads, the
+addressable-LED zone, ADC reads, and the `PINS`/`PINCFG` verbs — no build
+flags needed. Recommended layout for this build (flash with
+`board = rpipico2` in `platformio.ini`):
+
+```
+GP0, GP1, GP12, GP16, GP17   boop pads 0-4 (TTP223, active-high)   GP18 = pad 5 spare
+GP2-GP9                      buttons 0-7 (to GND, INPUT_PULLUP)
+GP22                         LED zone data (WS2812) — see pin note below
+GP20, GP21                   I2C0 (optional: MPR121 as an alternative boop bank)
+GP10, GP11, GP13             optional MAX7219 bridge (-DMAX_BRIDGE)
+GP14, GP15 / GP19            optional fan PWM / DS18B20 (-DPERIPHERAL_HUB)
+GP26-GP28                    ADC 0-2 (ADCREAD; APA102 clock takes GP28 if used)
+```
+
+- **Boop pads:** touch-down streams `BOOP <idx> 1`; map pads in
+  `inputs.coprocessor.boop_pads` — either to a transient expression
+  (snout/cheek zones, same path as the GPIO boop sensor) or to any action
+  (pad as an extra button).
+- **LED zone:** `inputs.coprocessor.led_zone` with `sync: face_color` makes
+  Protoface mirror the current material tint onto the strip (`LEDZ`), with
+  brightness pushed on connect (`LEDB`). *Pin note:* the firmware's default
+  LED-zone data pin is GP37, which only exists on RP2350B boards — on a
+  standard Pico 2 set it to a QFN60 pin (GP22 is free when the voice changer
+  is off) in the firmware's `include/config.h`.
+- **Servos are NOT on the coprocessor** in this build — they hang off a
+  separate I²C servo driver board (PCA9685-style) on the **Pi's own I²C bus**
+  (GPIO 2/3, free with the classic bonnet). The firmware's `SERVO` verbs
+  claim GP6-9 only lazily on the first command, so with the driver board in
+  place those pins stay pure buttons and nothing needs configuring.
+- **Voice changer caveat:** on the RP2350A, boop pads 3-5 share GP16-18 with
+  the optional voice changer's I2S pins — five boop pads and voice are
+  mutually exclusive on a standard Pico 2. If you ever want both, use an
+  RP2350B board (Pico Plus 2 / Pico LiPo 2 XL W), where pads 3-5 move to
+  GP31-33.
+
 ---
 
 ## Face editor
