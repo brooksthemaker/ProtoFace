@@ -1,0 +1,127 @@
+# Protoface — Pi Zero 2W profile
+#
+# Raspberry Pi Zero 2W + classic Adafruit RGB Matrix Bonnet (PID 3211, single
+# HUB75 port) + 2× 64×32 panels daisy-chained → 128×32 canvas. Uses hzeller's
+# rpi-rgb-led-matrix driver (the Zero 2W has no RP1, so Piomatter can't work).
+# Full build guide: PI02W.md.  Run with:
+#     sudo python run.py --config config.pi02w.yaml
+
+panel:
+  panel_width: 64            #{16-128}
+  panel_height: 32           #{16-64}
+  chain_length: 2            #{1-8} 2 panels daisy-chained on the bonnet's port
+  parallel: 1                #{1}   classic bonnet has a single HUB75 port
+  # ── hzeller driver knobs (ignored by the Piomatter path) ──
+  hardware_mapping: adafruit-hat   #{adafruit-hat|adafruit-hat-pwm} -pwm after the GPIO4→18 jumper mod
+  gpio_slowdown: 1           #{0-4} 0-1 typical for the Zero 2W
+  pwm_bits: 11               #{1-11} lower = less CPU, fewer shades
+  led_rgb_sequence: RGB      #{RGB|GBR|...} GBR if your panels show rotated colours
+  max_brightness_pct: 60     #{1-100} hardware brightness cap (bounds current draw)
+  limit_refresh_rate_hz: 0   #{0=off} pin refresh for steady brightness
+  drop_privileges: false     #{true|false} keep root so state.yaml + the IPC
+                             # socket stay writable (true drops to daemon:daemon
+                             # after GPIO init and breaks the 's' save key)
+
+display:
+  fps: 30                #{10-60} drop to 20-25 if the render loop can't keep up
+  driver: hzeller        #{auto|piomatter|hzeller}
+  preview: false         #{true|false}
+  preview_scale: 6       #{1-20}
+  background: [0, 0, 0]  #{0-255,0-255,0-255}
+
+# Two 64×32 panels; right mirrors left — same layout as the CM5 build.
+panels:
+  - name: face_left
+    region: [0, 0, 64, 32]
+    face:
+      active: main
+      wiggle:   {speed: 0.3, amplitude_x: 2.0, amplitude_y: 1.0}
+      blink:    {interval_min: 3.0, interval_max: 7.0, duration: 0.15}
+      expression_fade: 0.3
+      mouth_sensitivity: 0.5
+    material: {active: teal, scroll_x: 0.0, scroll_y: 0.0}
+    particles: {active: none}
+
+  - name: face_right
+    region: [64, 0, 64, 32]
+    mirror_of: face_left
+    face: {active: main}
+    material: {active: teal}
+    particles: {active: none}
+
+effects:
+  fire:    {enabled: false, layers: [{effect: embers, colors: [[255,0,0],[255,120,10]], count: 30, speed_min: 8, speed_max: 22, blend: add}]}
+  sparkle: {enabled: false, layers: [{effect: sparkle, colors: [[255,255,220]], count: 8, life_min: 0.05, life_max: 0.2, blend: add}]}
+  snow:    {enabled: false, layers: [{effect: snow, colors: [[200,220,255]], count: 30, speed_min: 6, speed_max: 12, blend: add}]}
+
+inputs:
+  microphone:
+    enabled: true        #{true|false}
+    type: usb            #{usb} the bonnet leaves no I2S pins free — use USB
+    device_index: null
+    sample_rate: 44100
+    chunk: 1024
+    smoothing: 0.15
+
+  gyro:
+    enabled: false       #{true|false} SDA/SCL (GPIO 2/3) are free on the classic bonnet
+    i2c_address: 0x68
+    sensitivity: 0.4
+    max_offset: 8
+
+  boop:
+    enabled: false       #{true|false} prefer a coprocessor button mapped to 'boop'
+    gpio_pin: 25         #{free BCM pins with adafruit-hat: 19, 25 (plus I2C 2/3, SPI 7-11, UART 14/15)}
+    expression: surprised
+    duration: 2.0
+    debounce: 0.05
+
+  # Button coprocessor (Pico / RP2040 / RP2350 over USB CDC) — the classic
+  # bonnet eats nearly every GPIO, so physical controls live on a small MCU
+  # running ProtoHUD's firmware/button_coproc firmware (unchanged; same
+  # proto-buttons v1 protocol). Actions match the solo terminal keys.
+  coprocessor:
+    enabled: false       #{true|false}
+    device: /dev/serial/by-id/usb-ProtoHUD_Buttons-if00   #{stable by-id path; globbed}
+    baud: 115200
+    long_ms: 600         #{pushed to firmware via CFG on connect}
+    buttons:             # id → action; string value = short press only
+      0: {short: next_expression, long: save}
+      1: {short: next_color,      long: prev_color}
+      2: {short: next_effect,     long: prev_effect}
+      3: {short: blink,           long: boop}
+      4: {short: brightness_up,   long: brightness_down}
+    # Valid actions: next_expression prev_expression next_color prev_color
+    #                next_effect prev_effect blink boop brightness_up
+    #                brightness_down save quit
+
+    # TTP223 boop pads on the coprocessor's pre-assigned touch pins
+    # (standard Pico 2 / RP2350A: idx 0-4 = GP0, GP1, GP12, GP16, GP17;
+    # idx 5 = GP18 spare). Firmware streams "BOOP <idx> <1|0>"; an
+    # {expression: ...} pad triggers a transient expression like the GPIO
+    # boop sensor, a plain action string makes the pad an extra button.
+    boop_pads:
+      0: {expression: surprised, duration: 2.0}   # snout
+      1: {expression: happy,     duration: 2.0}   # cheek L
+      2: {expression: happy,     duration: 2.0}   # cheek R
+      3: {expression: angry,     duration: 2.0}   # top of head
+      4: {expression: sad,       duration: 2.0}   # chin
+
+    # Addressable LED zone (WS2812/APA102) on the coprocessor — accessory
+    # LEDs (fins/ears/scales). sync: face_color mirrors the current material
+    # tint onto the strip every ~2 s; off leaves the zone alone (drive it
+    # from the firmware's LEDP patterns instead).
+    led_zone:
+      sync: face_color   #{face_color|off}
+      count: 16          #{1-300} pixels in the zone
+      brightness: 128    #{0-255}
+
+gif:
+  folder: gifs
+  auto_cycle: false
+  cycle_interval: 30.0
+  auto_release: 5.0
+
+ipc:
+  socket: /tmp/protoface.sock
+  shm_path: /dev/shm/protoface_frame

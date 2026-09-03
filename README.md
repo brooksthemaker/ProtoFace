@@ -2,7 +2,7 @@
 
 A Python LED face display daemon for the Raspberry Pi Compute Module 5. Drives HUB75 RGB matrix panels through the [Adafruit Triple LED Matrix Bonnet](https://www.adafruit.com/product/6358) using Adafruit's PIO-based [Piomatter](https://github.com/adafruit/Adafruit_Blinka_Raspberry_Pi5_Piomatter) driver, with per-panel sprite animations, scrolling materials, and multi-layer particle effects. Communicates with [ProtoHUD](https://github.com/brooksthemaker/ProtoHUD) over a Unix socket and POSIX shared memory.
 
-> **Platform note:** The CM5 (Pi 5 / RP1 family) cannot run hzeller's `rpi-rgb-led-matrix` library — its GPIO can't be bit-banged the way that library expects. Protoface drives the panels via Piomatter, which uses the RP1's PIO state machines. A CM4 would need a different driver; this build targets the CM5.
+> **Platform note:** The CM5 (Pi 5 / RP1 family) cannot run hzeller's `rpi-rgb-led-matrix` library — its GPIO can't be bit-banged the way that library expects. Protoface drives the panels via Piomatter, which uses the RP1's PIO state machines. The reverse also holds: Piomatter needs the RP1 and can't run on older Pis — so there is a second backend for the **Pi Zero 2W / Pi 3 / Pi 4** using hzeller's driver and the classic single-port RGB Matrix Bonnet (PID 3211), selected via `display.driver` (`auto` detects `/dev/pio0`). See **[PI02W.md](PI02W.md)** for that standalone build — including the button coprocessor (Pico over USB) that replaces the GPIO the bonnet consumes, and the face editor.
 
 ---
 
@@ -69,6 +69,9 @@ python run.py
 # CM5 with HUB75 panels — set display.preview: false in config.yaml
 pip install Adafruit-Blinka-Raspberry-Pi5-Piomatter
 python run.py
+
+# Pi Zero 2W with the classic RGB Matrix Bonnet — see PI02W.md for setup
+sudo python run.py --config config.pi02w.yaml
 ```
 
 Preview window keyboard shortcuts:
@@ -90,6 +93,26 @@ Preview window keyboard shortcuts:
 | `b` | Manual blink |
 | `+` / `-` | Brightness up / down |
 | `q` / `Esc` | Quit |
+
+---
+
+## Face Editor
+
+`editor.py` is a desktop pixel editor for the face PNGs — a Python port of
+ProtoHUD's in-HMD FaceEditor (pencil/eraser/bucket/eyedrop/line/rect tools,
+palette, mirror brush, undo, and eye/mouth hit-box authoring written back to
+the face folder's `config.json`). ProtoHUD's camera features are not part of
+this port.
+
+```bash
+python editor.py                          # edits the active face from config.yaml
+python editor.py --face example_fox
+```
+
+While the daemon is running on the panels, **V** pushes the canvas onto the
+physical panels for 10 s (IPC `preview_face`) and **T** overlays the daemon's
+live composited frame (material tint + particles) in the editor. Full key
+reference in the module docstring.
 
 ---
 
@@ -144,6 +167,7 @@ These panels report colours rotated R→G→B (the panel's red LED is driven by 
 | USB microphone | USB | `inputs.microphone.type: usb` |
 | MPU-6050 gyro | I2C (use the bonnet's I2C header) | `inputs.gyro.enabled: true` |
 | Boop sensor | a free GPIO | `inputs.boop.gpio_pin: <pin>` |
+| Button coprocessor | USB CDC (Pico running ProtoHUD's `button_coproc` firmware) | `inputs.coprocessor.enabled: true` |
 
 > The active3 pinout consumes most GPIO lines for HUB75. Use the bonnet's **I2C header** for the gyro. I2C can't drive the panels — it's only ~400 kHz–1 MHz, far below the HUB75 pixel clock. A boop sensor needs a GPIO that the active3 mapping leaves free; verify against the Piomatter active3 pin usage before wiring. See [HARDWARE.md](HARDWARE.md) and [INTEGRATION.md](INTEGRATION.md).
 
@@ -332,6 +356,7 @@ Enable the panel preview in the ProtoHUD menu: **Menu → Face → Panel Preview
 | `set_brightness` | `value` 0–255 | Panel brightness (applied in the render pipeline) |
 | `play_gif` | `gif_id` | Play GIF by index |
 | `set_palette` | `palette_id` | Switch colour palette |
+| `preview_face` | `w h rgba duration` | Show a transient face (base64 RGBA) for N seconds — used by the editor's push-to-panels preview |
 
 ### Startup order
 
@@ -361,7 +386,10 @@ See [INTEGRATION.md](INTEGRATION.md) for GPIO usage, CPU budget, and the minimal
 ```
 run.py                      — entry point; argument parsing; main loop
 demo.py                     — standalone panel demo: "Demo" text + cycle colours/effects
-config.yaml                 — panel layout, inputs, IPC paths
+editor.py                   — desktop pixel editor for face PNGs (ProtoHUD FaceEditor port)
+config.yaml                 — panel layout, inputs, IPC paths (CM5 build)
+config.pi02w.yaml           — Pi Zero 2W profile (hzeller driver + coprocessor)
+PI02W.md                    — Pi Zero 2W build guide
 generate_assets.py          — creates placeholder PNGs for all face folders
 requirements.txt
 
@@ -375,12 +403,14 @@ protoface/
   shm_writer.py             — writes the canvas as RGB to /dev/shm/protoface_frame
   ipc.py                    — Unix socket server; dispatches commands to all panels
   output/
-    hub75.py                — Adafruit Piomatter wrapper (graceful ImportError fallback)
+    hub75.py                — Adafruit Piomatter wrapper (CM5/Pi 5; graceful fallback)
+    hub75_hzeller.py        — hzeller rpi-rgb-led-matrix wrapper (Pi Zero 2W/3/4)
     preview.py              — pygame scaled preview window for development
   inputs/
     microphone.py           — threaded PyAudio capture + FFT → volume/spectrum
     gyro.py                 — I2C MPU-6050 → pitch/roll face offset
     boop.py                 — GPIO debounced sensor → expression trigger
+    coprocessor.py          — Pico button coprocessor (proto-buttons v1, USB CDC)
 
 faces/
   main/                     — whole-face sprites shown on both panels (right mirrored)
